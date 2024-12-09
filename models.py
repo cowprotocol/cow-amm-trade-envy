@@ -102,30 +102,6 @@ class Trade:
     IS_USDC_WETH: bool
     IS_WETH_USDC: bool
 
-    def get_limit_price_in_usd(self):
-        if self.IS_USDC_WETH:
-            return 1e18 * self.BUY_PRICE / self.SELL_PRICE * 1e-6
-        elif self.IS_WETH_USDC:
-            return 1e18 * self.SELL_PRICE / self.BUY_PRICE * 1e-6
-        else:
-            return None
-
-    def get_limit_price_in_eth(self):
-        if self.IS_USDC_WETH:
-            return 1e6 * self.SELL_PRICE / self.BUY_PRICE * 1e-18
-        elif self.IS_WETH_USDC:
-            return 1e6 * self.BUY_PRICE / self.SELL_PRICE * 1e-18
-        else:
-            return None
-
-    def get_limit_price_in_wei(self):
-        if self.IS_USDC_WETH:
-            return 1e6 * self.SELL_PRICE / self.BUY_PRICE
-        elif self.IS_WETH_USDC:
-            return 1e6 * self.BUY_PRICE / self.SELL_PRICE
-        else:
-            return None
-
 @dataclass(frozen=True)
 class SettlementTrades:
     trades: List[Trade]
