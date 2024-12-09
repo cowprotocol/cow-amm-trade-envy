@@ -6,8 +6,21 @@ from dotenv import load_dotenv
 load_dotenv()
 node_url = os.getenv("NODE_URL")
 
+# topics are hexbytes
+def isin_bondingpool(topic: bytes, pool_address: str) -> bool:
+    return pool_address.lower() in topic.hex()
+
+def log_isused(log, pool_address: str) -> bool:
+    return any([isin_bondingpool(topic, weth_usdc_pool_addr) for topic in log.topics])
+
+def logs_isused(logs, pool_address: str) -> bool:
+    return any([log_isused(log, pool_address) for log in logs])
+
 if __name__ == '__main__':
     filepath = 'cow_amm_missed_surplus.csv'
+
+    weth_usdc_pool_addr = "f08d4dea369c456d26a3168ff0024b904f2d8b91"
+
     file = pd.read_csv(filepath)
     w3 = Web3(Web3.HTTPProvider(
         node_url,
@@ -20,17 +33,13 @@ if __name__ == '__main__':
     used_surplus = 0
     for _, row in file.iterrows():
         if row['potential_surplus'] and row['potential_surplus'] > 0:
-            isUsed = False
             txs = w3.eth.get_transaction_receipt(row['call_tx_hash'])
-            for log in txs.logs:
-                for topic in log.topics:
-                    # Search for tx to the usdc-weth cow bonding pool
-                    if "f08d4dea369c456d26a3168ff0024b904f2d8b91".lower() in topic.hex():
-                        isUsed = True
+            isUsed = logs_isused(txs.logs, weth_usdc_pool_addr)
             if not isUsed:
                 total_surplus += row['potential_surplus']
             else:
                 used_surplus += row['potential_surplus']
-    print(f"Total unused surplus: {total_surplus}")
-    print(f"Total used surplus: {used_surplus}")
+
+    print(f"Total unused surplus: {total_surplus/10**18}")
+    print(f"Total used surplus: {used_surplus/10**18}")
     
