@@ -26,14 +26,14 @@ def analyze_surplus(file_path, node_url, pool_address):
     total_surplus, used_surplus = 0, 0
 
     for _, row in tqdm(file.iterrows()):
-        if row['potential_surplus'] > 0:
+        if row['trade_envy'] > 0:
             tx_receipt = w3.eth.get_transaction_receipt(row['call_tx_hash'])
             is_used = logs_are_used(tx_receipt.logs)
 
             if not is_used:
-                total_surplus += row['potential_surplus']
+                total_surplus += row['trade_envy']
             else:
-                used_surplus += row['potential_surplus']
+                used_surplus += row['trade_envy']
 
     return {
         "total_unused_surplus": total_surplus / 10**18,

@@ -71,8 +71,6 @@ class CoWAmmOrderData:
 
     @staticmethod
     def from_order_response(prices: List[int], order):
-        print(prices)
-        print(order)
 
         return CoWAmmOrderData(
             sellToken=token_factory(address=order[0].lower()),
@@ -139,10 +137,7 @@ class SettlementTrades:
         return any((trade.SELL_TOKEN, trade.BUY_TOKEN) == (USDC, WETH) for trade in self.trades)
 
     @classmethod
-    def from_lists(cls, tokens: str, prices: str, trades: str) -> 'Trades':
-        trades = json.loads(trades.replace(' ', ','))
-        tokens = tokens.strip('[]').split()
-        prices = prices.strip('[]').split()
+    def from_lists(cls, tokens: list, prices: list, trades: list) -> 'Trades':
         trades_processed = []
         for trade in trades:
             buy_token = tokens[int(trade['buyTokenIndex'])].lower()
