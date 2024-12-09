@@ -2,6 +2,8 @@ import os
 import pandas as pd
 from web3 import Web3
 from dotenv import load_dotenv
+from models import Contracts
+from tqdm import tqdm
 
 load_dotenv()
 
@@ -23,7 +25,7 @@ def analyze_surplus(file_path, node_url, pool_address):
     file = pd.read_csv(file_path)
     total_surplus, used_surplus = 0, 0
 
-    for _, row in file.iterrows():
+    for _, row in tqdm(file.iterrows()):
         if row['potential_surplus'] > 0:
             tx_receipt = w3.eth.get_transaction_receipt(row['call_tx_hash'])
             is_used = logs_are_used(tx_receipt.logs)
@@ -40,7 +42,7 @@ def analyze_surplus(file_path, node_url, pool_address):
 
 if __name__ == '__main__':
     file_path = 'cow_amm_missed_surplus.csv'
-    pool_address = "f08d4dea369c456d26a3168ff0024b904f2d8b91"
+    pool_address = Contracts.USDC_WETH_POOL
 
     surplus_results = analyze_surplus(file_path, node_url, pool_address)
     print(f"Total unused surplus: {surplus_results['total_unused_surplus']}")

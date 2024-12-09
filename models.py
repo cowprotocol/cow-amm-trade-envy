@@ -127,18 +127,23 @@ class Trade:
             return None
 
 @dataclass(frozen=True)
-class Trades:
+class SettlementTrades:
     trades: List[Trade]
-    isUsdcWeth: bool
-    isWethUsdc: bool
+
+    @property
+    def isUsdcWeth(self):
+        return any(trade.IS_USDC_WETH for trade in self.trades)
+
+    @property
+    def isWethUsdc(self):
+        return any(trade.IS_WETH_USDC for trade in self.trades)
 
     @classmethod
-    def from_lists(cls, tokens: str, prices: str, trades: str) -> 'Trades':
+    def from_lists(cls, tokens: str, prices: str, trades: str) -> 'SettlementTrades':
         trades = json.loads(trades.replace(' ', ','))
         tokens = tokens.strip('[]').split()
         prices = prices.strip('[]').split()
         trades_processed = []
-        isUsdcWeth = False
         for trade in trades:
             buy_token = tokens[int(trade['buyTokenIndex'])].lower()
             sell_token = tokens[int(trade['sellTokenIndex'])].lower()
@@ -149,6 +154,8 @@ class Trades:
 
             isUsdcWeth = False
             isWethUsdc = False
+
+            # convention sell_buy
             if buy_token == Tokens.USDC and sell_token == Tokens.WETH:
                 isUsdcWeth = False
                 isWethUsdc = True
@@ -167,7 +174,7 @@ class Trades:
                     IS_WETH_USDC = isWethUsdc
             ))
 
-        return cls(trades=trades_processed, isUsdcWeth=isUsdcWeth, isWethUsdc=isWethUsdc)
+        return cls(trades=trades_processed)
 
     def __iter__(self):
         return iter(self.trades)
