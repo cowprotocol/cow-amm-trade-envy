@@ -1,0 +1,12 @@
+[project]
+name = "cow-amm-trade-envy"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pandas>=2.2.3",
+    "python-dotenv>=1.0.1",
+    "tqdm>=4.67.1",
+    "web3==7.2.0",
+]
