@@ -5,8 +5,6 @@ from tqdm import tqdm
 from models import Contracts, BCowPool, CoWAmmOrderData, UCP, Tokens, SettlementTrades
 from bcow_helper import BCoWHelper
 
-WETH_decimals = 18
-USDC_decimals = 6
 
 def calc_surplus(ucp: UCP, order: CoWAmmOrderData, settlement_trades:SettlementTrades) -> float:
     # todo assumes we can fully balance
@@ -16,8 +14,8 @@ def calc_surplus(ucp: UCP, order: CoWAmmOrderData, settlement_trades:SettlementT
         surplus = executed_buy - cow_amm_buy
         return surplus
     elif order.buyToken == Tokens.WETH and settlement_trades.isUsdcWeth:
-        cow_amm_buy = order.usdc_amount
-        executed_buy = order.weth_amount * ucp[Tokens.WETH] / ucp[Tokens.USDC]
+        cow_amm_buy = order.sellAmount
+        executed_buy = order.buyAmount * ucp[Tokens.WETH] / ucp[Tokens.USDC]
         surplus_usdc = executed_buy - cow_amm_buy
         surplus = surplus_usdc * ucp[Tokens.USDC] / ucp[Tokens.WETH]
         return surplus
