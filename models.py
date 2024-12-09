@@ -6,12 +6,10 @@ from dataclasses import dataclass
 
 w3 = Web3()
 
-
 @dataclass(frozen=True)
 class Contracts:
     HELPER_CONTRACT: ClassVar[str] = "0x3FF0041A614A9E6Bf392cbB961C97DA214E9CB31"
     USDC_WETH_POOL: ClassVar[str] = "0xf08d4dea369c456d26a3168ff0024b904f2d8b91"
-
 
 @dataclass(frozen=True)
 class Token:
@@ -19,33 +17,25 @@ class Token:
     address: str
     decimals: int
 
-
-USDC = Token(name="USDC", address="0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48".lower(),
+@dataclass(frozen=True)
+class Tokens:
+    USDC = Token(name="USDC", address="0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48".lower(),
              decimals=6)
-WETH = Token(name="WETH", address="0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".lower(),
+    WETH = Token(name="WETH", address="0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".lower(),
              decimals=18)
 
-class Tokens:
-    USDC = USDC
-    WETH = WETH
+    def get_lookup(self) -> Dict[str, Token]:
+        return {
+            self.USDC.address: self.USDC,
+            self.WETH.address: self.WETH
+        }
 
-supported_pools = {
-    (WETH.address, USDC.address): Contracts.USDC_WETH_POOL
+addr_to_token = Tokens().get_lookup()
+
+# careful, order within a tuple matters
+SUPPORTED_POOLS = {
+    (Tokens.WETH.address, Tokens.USDC.address): Contracts.USDC_WETH_POOL
 }
-
-def token_factory(address: str) -> Token:
-    name_map = {
-        "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48".lower(): "USDC",
-        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".lower(): "WETH"
-    }
-
-    decimal_map = {
-        "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48".lower(): 6,
-        "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".lower(): 18
-    }
-
-    return Token(name=name_map[address], address=address, decimals=decimal_map[address])
-
 
 @dataclass(frozen=True)
 class BCowPool:
@@ -70,11 +60,11 @@ class CoWAmmOrderData:
     signature: bytes
 
     @staticmethod
-    def from_order_response(prices: List[int], order):
+    def from_order_response(order):
 
         return CoWAmmOrderData(
-            sellToken=token_factory(address=order[0].lower()),
-            buyToken=token_factory(address=order[1].lower()),
+            sellToken=addr_to_token[order[0].lower()],
+            buyToken=addr_to_token[order[1].lower()],
             receiver=order[2],
             sellAmount=order[3],
             buyAmount=order[4],
@@ -130,11 +120,11 @@ class SettlementTrades:
 
     @property
     def isWethUsdc(self) -> bool:
-        return any((trade.SELL_TOKEN, trade.BUY_TOKEN) == (WETH, USDC) for trade in self.trades)
+        return any((trade.SELL_TOKEN, trade.BUY_TOKEN) == (Tokens.WETH, Tokens.USDC) for trade in self.trades)
 
     @property
     def isUsdcWeth(self) -> bool:
-        return any((trade.SELL_TOKEN, trade.BUY_TOKEN) == (USDC, WETH) for trade in self.trades)
+        return any((trade.SELL_TOKEN, trade.BUY_TOKEN) == (Tokens.USDC, Tokens.WETH) for trade in self.trades)
 
     @classmethod
     def from_lists(cls, tokens: list, prices: list, trades: list) -> 'Trades':
@@ -147,13 +137,13 @@ class SettlementTrades:
             buy_price = int(prices[int(trade['buyTokenIndex'])])
             sell_price = int(prices[int(trade['sellTokenIndex'])])
 
-            is_supported = (buy_token, sell_token) in supported_pools or (sell_token, buy_token) in supported_pools
+            is_supported = (buy_token, sell_token) in SUPPORTED_POOLS or (sell_token, buy_token) in SUPPORTED_POOLS
             if not is_supported:
                 continue
 
             trades_processed.append(Trade(
-                BUY_TOKEN=token_factory(address=buy_token),
-                SELL_TOKEN=token_factory(address=sell_token),
+                BUY_TOKEN=addr_to_token[buy_token],
+                SELL_TOKEN=addr_to_token[sell_token],
                 BUY_AMOUNT=buy_amount,
                 SELL_AMOUNT=sell_amount,
                 BUY_PRICE=buy_price,
