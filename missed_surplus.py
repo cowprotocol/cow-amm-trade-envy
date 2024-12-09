@@ -11,7 +11,7 @@ def isin_bondingpool(topic: bytes, pool_address: str) -> bool:
     return pool_address.lower() in topic.hex()
 
 def log_isused(log, pool_address: str) -> bool:
-    return any([isin_bondingpool(topic, weth_usdc_pool_addr) for topic in log.topics])
+    return any([isin_bondingpool(topic, pool_address) for topic in log.topics])
 
 def logs_isused(logs, pool_address: str) -> bool:
     return any([log_isused(log, pool_address) for log in logs])
