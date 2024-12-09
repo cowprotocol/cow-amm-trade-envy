@@ -53,7 +53,7 @@ def calc_envy(row):
             ucp[Tokens.USDC],
             ucp[Tokens.WETH]
         ],
-        block_num=int(row['call_block_number']) + 1
+        block_num=int(row['call_block_number'])
     )
 
     surplus = calc_surplus(ucp, order, settlement_trades)
