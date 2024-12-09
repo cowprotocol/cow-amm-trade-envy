@@ -3,4 +3,3 @@ venv
 **/*.swp
 .env
 .idea
-cow_amm_missed_surplus.csv
