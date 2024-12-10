@@ -25,7 +25,6 @@ def preprocess_row(row: pd.Series) -> pd.Series:
 
 
 def calc_surplus_per_trade(ucp: UCP, trade: Trade, block_num) -> Optional[float]:
-    # todo assumes we can fully balance
     # todo test if direction of trades is actually valid
 
     pool = usdc_weth
