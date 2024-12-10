@@ -9,7 +9,7 @@ from typing import Optional
 # todo set up dagster
 # todo dockerize
 # todo add notebook or similar to show results
-# todo store dune and node response data in cassandra
+# todo store dune and node response data in postgres
 
 
 helper = BCoWHelper()
@@ -34,11 +34,13 @@ def calc_surplus_per_trade(ucp: UCP, trade: Trade, block_num) -> Optional[float]
         block_num=block_num,
     )
     cow_amm_buy = order.sellAmount
-    # todo prices should be better when we do not fully balance, probably negligible, assuming same prices here
+    # todo prices should be better when we do not fully balance, probably negligible, assuming constant prices here
     max_buy = min(trade.sellAmount, cow_amm_buy)
     max_sell = order.buyAmount * max_buy / cow_amm_buy
 
-    order_and_trade_aligned = order.buyToken == trade.buyToken and order.sellToken == trade.sellToken
+    order_and_trade_aligned = (
+        order.buyToken == trade.buyToken and order.sellToken == trade.sellToken
+    )
     if not order_and_trade_aligned:
         return None
 
@@ -47,8 +49,7 @@ def calc_surplus_per_trade(ucp: UCP, trade: Trade, block_num) -> Optional[float]
     elif trade.isZeroToOne(pool):
         selling_token, buying_token = pool.TOKEN0, pool.TOKEN1
     else:
-        return None #  shouldnt even happen when we only use eligible trades
-
+        return None  #  shouldnt even happen when we only use eligible trades
 
     executed_buy = max_sell * ucp[buying_token] / ucp[selling_token]
     surplus = executed_buy - max_buy
