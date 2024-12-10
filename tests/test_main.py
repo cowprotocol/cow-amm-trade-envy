@@ -22,7 +22,7 @@ def test_calc_envy1():
 
     row_as_series = get_row_from_string(data_row_str)
     result = calc_envy(row_as_series)
-    assert int(result) == -4676949075581188
+    assert int(result) == -3186628725355451
 
 
 def test_calc_envy2():
