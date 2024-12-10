@@ -1,6 +1,6 @@
 from web3 import Web3
 
-from typing import ClassVar, Dict, List
+from typing import ClassVar, Dict, List, Tuple
 from dataclasses import dataclass
 
 w3 = Web3()
@@ -32,22 +32,41 @@ class Tokens:
         decimals=18,
     )
 
-    def get_lookup(self) -> Dict[str, Token]:
-        return {self.USDC.address: self.USDC, self.WETH.address: self.WETH}
-
-
-addr_to_token = Tokens().get_lookup()
-
-# careful, order within a tuple matters
-SUPPORTED_POOLS = {(Tokens.WETH.address, Tokens.USDC.address): Contracts.USDC_WETH_POOL}
-
 
 @dataclass(frozen=True)
 class BCowPool:
     ADDRESS: str
+    TOKEN0: Token
+    TOKEN1: Token
 
     def checksum(self) -> str:
         return w3.to_checksum_address(self.ADDRESS)
+
+
+usdc_weth = BCowPool(Contracts.USDC_WETH_POOL, Tokens.USDC, Tokens.WETH)
+
+
+class Pools:
+    USDC_WETH = usdc_weth
+
+    def get_pools(self) -> List[BCowPool]:
+        return [self.USDC_WETH]
+
+    def get_supported_pools(self) -> Dict[Tuple[str, str], BCowPool]:
+        return {
+            (pool.TOKEN0.address, pool.TOKEN1.address): pool
+            for pool in self.get_pools()
+        }
+
+    def get_token_lookup(self) -> Dict[str, Token]:
+        pools = self.get_pools()
+        tokens = [pool.TOKEN0 for pool in pools] + [pool.TOKEN1 for pool in pools]
+        tokens = list(set(tokens))
+        return {token.address: token for token in tokens}
+
+
+addr_to_token = Pools().get_token_lookup()
+SUPPORTED_POOLS = Pools().get_supported_pools()
 
 
 @dataclass(frozen=True)
@@ -103,28 +122,18 @@ class UCP:
 
 @dataclass(frozen=True)
 class Trade:
-    BUY_TOKEN: Token
-    SELL_TOKEN: Token
-    BUY_AMOUNT: int
-    SELL_AMOUNT: int
-    BUY_PRICE: int
-    SELL_PRICE: int
+    buyToken: Token
+    sellToken: Token
+    buyAmount: int
+    sellAmount: int
+    buyPrice: int
+    sellPrice: int
 
-    @property
-    def isWethUsdc(self) -> bool:
-        return (self.SELL_TOKEN, self.BUY_TOKEN) == (Tokens.WETH, Tokens.USDC)
+    def isZeroToOne(self, pool: BCowPool) -> bool:
+        return self.buyToken == pool.TOKEN1 and self.sellToken == pool.TOKEN0
 
-    @property
-    def isUsdcWeth(self) -> bool:
-        return (self.SELL_TOKEN, self.BUY_TOKEN) == (Tokens.USDC, Tokens.WETH)
-
-    def get_limit_price(self):  # todo continue
-        price = (
-            10 ** (self.BUY_TOKEN.decimals - self.SELL_TOKEN.decimals)
-            * self.BUY_PRICE
-            / self.SELL_PRICE
-        )
-        return price
+    def isOneToZero(self, pool: BCowPool) -> bool:
+        return self.buyToken == pool.TOKEN0 and self.sellToken == pool.TOKEN1
 
 
 @dataclass(frozen=True)
@@ -156,12 +165,12 @@ class SettlementTrades:
 
             trades_processed.append(
                 Trade(
-                    BUY_TOKEN=addr_to_token[buy_token],
-                    SELL_TOKEN=addr_to_token[sell_token],
-                    BUY_AMOUNT=buy_amount,
-                    SELL_AMOUNT=sell_amount,
-                    BUY_PRICE=buy_price,
-                    SELL_PRICE=sell_price,
+                    buyToken=addr_to_token[buy_token],
+                    sellToken=addr_to_token[sell_token],
+                    buyAmount=buy_amount,
+                    sellAmount=sell_amount,
+                    buyPrice=buy_price,
+                    sellPrice=sell_price,
                 )
             )
 

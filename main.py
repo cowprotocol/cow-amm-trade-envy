@@ -1,7 +1,7 @@
 import json
 import pandas as pd
 from tqdm import tqdm
-from models import Contracts, BCowPool, CoWAmmOrderData, UCP, Tokens, SettlementTrades, Trade
+from models import UCP, Tokens, SettlementTrades, Trade, usdc_weth
 from bcow_helper import BCoWHelper
 from typing import Optional
 
@@ -13,7 +13,6 @@ from typing import Optional
 
 
 helper = BCoWHelper()
-usdc_weth = BCowPool(Contracts.USDC_WETH_POOL)
 
 
 def preprocess_row(row: pd.Series) -> pd.Series:
@@ -24,29 +23,40 @@ def preprocess_row(row: pd.Series) -> pd.Series:
     row["gas_price"] = int(row["gas_price"])
     return row
 
-def calc_surplus_per_trade(ucp: UCP, trade: Trade, block_num) -> Optional[float]:
 
+def calc_surplus_per_trade(ucp: UCP, trade: Trade, block_num) -> Optional[float]:
+    # todo assumes we can fully balance
+    # todo test if direction of trades is actually valid
+
+    pool = usdc_weth
     order = helper.order(
-        pool=usdc_weth.checksum(),
+        pool=pool.checksum(),
         prices=[ucp[Tokens.USDC], ucp[Tokens.WETH]],
         block_num=block_num,
     )
+    cow_amm_buy = order.sellAmount
+    # todo prices should be better when we do not fully balance, probably negligible, assuming same prices here
+    max_buy = min(trade.sellAmount, cow_amm_buy) 
+    max_sell = order.buyAmount * max_buy / cow_amm_buy
 
-    if order.buyToken == Tokens.USDC and trade.isWethUsdc:
-        cow_amm_buy = order.sellAmount
-        executed_buy = order.buyAmount * ucp[Tokens.USDC] / ucp[Tokens.WETH]
-        surplus = executed_buy - cow_amm_buy
-        return surplus
-    elif order.buyToken == Tokens.WETH and trade.isUsdcWeth:
-        cow_amm_buy = order.sellAmount
-        executed_buy = order.buyAmount * ucp[Tokens.WETH] / ucp[Tokens.USDC]
-        surplus_usdc = executed_buy - cow_amm_buy
-        surplus = (
-            surplus_usdc * ucp[Tokens.USDC] / ucp[Tokens.WETH]
-        )  # todo will have to replace this with a more general price lookup
-        return surplus
+    order_and_trade_aligned = order.buyToken == trade.buyToken and order.sellToken == trade.sellToken
+    if not order_and_trade_aligned:
+        return None
 
-    return None
+    if trade.isOneToZero(pool):
+        selling_token, buying_token = pool.TOKEN1, pool.TOKEN0
+    elif trade.isZeroToOne(pool):
+        selling_token, buying_token = pool.TOKEN0, pool.TOKEN1
+    else:
+        return None #  shouldnt even happen when we only use eligible trades
+
+
+    executed_buy = order.buyAmount * ucp[buying_token] / ucp[selling_token]
+    surplus = executed_buy - cow_amm_buy
+    if trade.isZeroToOne(pool):
+        # todo need an ETH pricelookup for more general pools
+        surplus = surplus * ucp[selling_token] / ucp[buying_token]
+    return surplus
 
 
 def calc_gas(gas_price: int):
@@ -64,6 +74,7 @@ def calc_envy(row):
 
     for trade in eligible_settlement_trades:
         surplus = calc_surplus_per_trade(ucp, trade, row["call_block_number"])
+        # todo decide what to do on multiple trades, currently takes the first
         if surplus:
             gas = calc_gas(row["gas_price"])
             trade_envy = surplus - gas
