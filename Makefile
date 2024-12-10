@@ -6,3 +6,6 @@ format:
 
 lint:
 	uv run ruff check
+
+run-dagster:
+	uv run dagster dev -w workspace.yaml
