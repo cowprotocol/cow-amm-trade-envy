@@ -110,6 +110,14 @@ class Trade:
     BUY_PRICE: int
     SELL_PRICE: int
 
+    @property
+    def isWethUsdc(self) -> bool:
+        return (self.SELL_TOKEN, self.BUY_TOKEN) == (Tokens.WETH, Tokens.USDC)
+
+    @property
+    def isUsdcWeth(self) -> bool:
+        return (self.SELL_TOKEN, self.BUY_TOKEN) == (Tokens.USDC, Tokens.WETH)
+
     def get_limit_price(self):  # todo continue
         price = (
             10 ** (self.BUY_TOKEN.decimals - self.SELL_TOKEN.decimals)
@@ -123,19 +131,8 @@ class Trade:
 class SettlementTrades:
     trades: List[Trade]
 
-    @property
-    def isWethUsdc(self) -> bool:
-        return any(
-            (trade.SELL_TOKEN, trade.BUY_TOKEN) == (Tokens.WETH, Tokens.USDC)
-            for trade in self.trades
-        )
-
-    @property
-    def isUsdcWeth(self) -> bool:
-        return any(
-            (trade.SELL_TOKEN, trade.BUY_TOKEN) == (Tokens.USDC, Tokens.WETH)
-            for trade in self.trades
-        )
+    def __getitem__(self, index):
+        return self.trades[index]
 
     @classmethod
     def eligible_trades_from_lists(
