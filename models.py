@@ -1,4 +1,3 @@
-import json
 from web3 import Web3
 
 from typing import ClassVar, Dict, List
@@ -127,7 +126,7 @@ class SettlementTrades:
         return any((trade.SELL_TOKEN, trade.BUY_TOKEN) == (Tokens.USDC, Tokens.WETH) for trade in self.trades)
 
     @classmethod
-    def from_lists(cls, tokens: list, prices: list, trades: list) -> 'Trades':
+    def eligible_trades_from_lists(cls, tokens: list, prices: list, trades: list) -> 'SettlementTrades':
         trades_processed = []
         for trade in trades:
             buy_token = tokens[int(trade['buyTokenIndex'])].lower()

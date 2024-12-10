@@ -1,4 +1,3 @@
-import web3
 import json
 import pandas as pd
 from tqdm import tqdm
@@ -14,20 +13,22 @@ def preprocess_row(row: pd.Series) -> pd.Series:
     row['trades'] = json.loads(row['trades'].replace(' ', ','))
     return row
 
-def calc_surplus(ucp: UCP, order: CoWAmmOrderData, settlement_trades:SettlementTrades) -> float:
+def calc_surplus(ucp: UCP, order: CoWAmmOrderData, eligible_settlement_trades:SettlementTrades) -> float:
     # todo assumes we can fully balance
     # todo calc per trade, return None if pool not supported or helper disagrees with trade direction
     #   then decide what to do for multiple trades per settlement
-    if order.buyToken == Tokens.USDC and settlement_trades.isWethUsdc:
+    # todo first test if direction of trades is actually valid
+    # todo simplify this function
+    if order.buyToken == Tokens.USDC and eligible_settlement_trades.isWethUsdc:
         cow_amm_buy = order.sellAmount
         executed_buy = order.buyAmount * ucp[Tokens.USDC] / ucp[Tokens.WETH]
         surplus = executed_buy - cow_amm_buy
         return surplus
-    elif order.buyToken == Tokens.WETH and settlement_trades.isUsdcWeth:
+    elif order.buyToken == Tokens.WETH and eligible_settlement_trades.isUsdcWeth:
         cow_amm_buy = order.sellAmount
         executed_buy = order.buyAmount * ucp[Tokens.WETH] / ucp[Tokens.USDC]
         surplus_usdc = executed_buy - cow_amm_buy
-        surplus = surplus_usdc * ucp[Tokens.USDC] / ucp[Tokens.WETH]
+        surplus = surplus_usdc * ucp[Tokens.USDC] / ucp[Tokens.WETH] # todo will have to replace this with a more general price lookup
         return surplus
 
     return None
@@ -43,9 +44,9 @@ def calc_envy(row):
         row['clearingPrices']
     )
 
-    settlement_trades = SettlementTrades.from_lists(row['tokens'],
-                                                    row['clearingPrices'],
-                                                    row['trades'])
+    eligible_settlement_trades = SettlementTrades.eligible_trades_from_lists(row['tokens'],
+                                                                    row['clearingPrices'],
+                                                                    row['trades'])
 
     order = helper.order(
         pool=usdc_weth.checksum(),
@@ -56,7 +57,7 @@ def calc_envy(row):
         block_num=int(row['call_block_number'])
     )
 
-    surplus = calc_surplus(ucp, order, settlement_trades)
+    surplus = calc_surplus(ucp, order, eligible_settlement_trades)
 
     if surplus:
         gas = calc_gas(int(row['gas_price']))
