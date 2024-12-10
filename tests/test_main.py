@@ -1,5 +1,5 @@
 import pandas as pd
-from main import calc_envy
+from cow_amm_trade_envy.envy_calculation import calc_envy
 from io import StringIO
 
 

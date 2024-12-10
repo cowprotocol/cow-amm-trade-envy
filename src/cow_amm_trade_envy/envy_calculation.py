@@ -1,8 +1,8 @@
 import json
 import pandas as pd
 from tqdm import tqdm
-from models import UCP, Tokens, SettlementTrades, Trade, usdc_weth
-from bcow_helper import BCoWHelper
+from cow_amm_trade_envy.models import UCP, Tokens, SettlementTrades, Trade, usdc_weth
+from cow_amm_trade_envy.bcow_helper import BCoWHelper
 from typing import Optional
 
 # todo add ingestion from dune
@@ -84,8 +84,8 @@ def calc_envy(row):
 
 
 if __name__ == "__main__":
-    infile = "cow_amm_ucp.csv"
-    outfile = "cow_amm_missed_surplus.csv"
+    infile = "data/cow_amm_ucp.csv"
+    outfile = "data/cow_amm_missed_surplus.csv"
 
     ucp_data = pd.read_csv(infile)
     trade_envy_per_settlement = [calc_envy(row) for _, row in tqdm(ucp_data.iterrows())]

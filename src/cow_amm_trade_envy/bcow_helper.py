@@ -3,8 +3,8 @@ from web3 import Web3
 from typing import List
 from dotenv import load_dotenv
 
-from constants import BCOW_HELPER_ABI
-from models import Contracts, CoWAmmOrderData
+from cow_amm_trade_envy.constants import BCOW_HELPER_ABI
+from cow_amm_trade_envy.models import Contracts, CoWAmmOrderData
 
 load_dotenv()
 node_url = os.getenv("NODE_URL")
