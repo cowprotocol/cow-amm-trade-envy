@@ -4,6 +4,14 @@ from tqdm import tqdm
 from models import Contracts, BCowPool, CoWAmmOrderData, UCP, Tokens, SettlementTrades
 from bcow_helper import BCoWHelper
 
+
+# todo add ingestion from dune
+# todo set up dagster
+# todo dockerize
+# todo add notebook or similar to show results
+# todo store dune and node response data in cassandra
+
+
 helper = BCoWHelper()
 usdc_weth = BCowPool(Contracts.USDC_WETH_POOL)
 
