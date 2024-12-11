@@ -6,10 +6,8 @@ from cow_amm_trade_envy.datasources import BCoWHelper
 from typing import Optional
 
 # todo add ingestion from dune
-# todo set up dagster
 # todo dockerize
-# todo add notebook or similar to show results
-# todo store dune and node response data in postgres
+# todo store dune data in postgres
 
 
 helper = BCoWHelper()
