@@ -4,3 +4,4 @@ venv
 .env
 .idea
 cache.db
+tester.py

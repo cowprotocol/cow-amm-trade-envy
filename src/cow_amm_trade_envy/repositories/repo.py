@@ -8,8 +8,4 @@ from cow_amm_trade_envy.assets.assets import (
 
 @repository
 def price_improvement_repository():
-    return [
-        envy_job,
-        weekly_schedule,
-        run_download_dune
-    ]
+    return [envy_job, weekly_schedule, run_download_dune]
