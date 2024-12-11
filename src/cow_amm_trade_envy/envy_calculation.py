@@ -2,7 +2,7 @@ import json
 import pandas as pd
 from tqdm import tqdm
 from cow_amm_trade_envy.models import UCP, Tokens, SettlementTrades, Trade, usdc_weth
-from cow_amm_trade_envy.bcow_helper import BCoWHelper
+from cow_amm_trade_envy.datasources import BCoWHelper
 from typing import Optional
 
 # todo add ingestion from dune
