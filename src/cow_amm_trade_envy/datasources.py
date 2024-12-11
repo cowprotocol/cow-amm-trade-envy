@@ -4,7 +4,7 @@ import json
 from typing import List
 from dotenv import load_dotenv
 from cow_amm_trade_envy.constants import BCOW_HELPER_ABI
-from cow_amm_trade_envy.models import Contracts, CoWAmmOrderData
+from cow_amm_trade_envy.models import CoWAmmOrderData
 
 from web3 import Web3
 from web3.types import HexBytes
@@ -83,7 +83,7 @@ def fetch_from_cache_or_query(
 
 class BCoWHelper:
     def __init__(self):
-        self.address = Contracts.HELPER_CONTRACT
+        self.address = "0x3FF0041A614A9E6Bf392cbB961C97DA214E9CB31"
         self.abi = BCOW_HELPER_ABI
         self.contract = w3.eth.contract(address=self.address, abi=self.abi)
 

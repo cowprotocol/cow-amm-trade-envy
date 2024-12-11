@@ -1,7 +1,7 @@
 import json
 import pandas as pd
 from tqdm import tqdm
-from cow_amm_trade_envy.models import UCP, Tokens, SettlementTrades, Trade, usdc_weth
+from cow_amm_trade_envy.models import UCP, Pools, SettlementTrades, Trade
 from cow_amm_trade_envy.datasources import BCoWHelper
 from typing import Optional
 
@@ -24,13 +24,14 @@ def preprocess_row(row: pd.Series) -> pd.Series:
     return row
 
 
-def calc_surplus_per_trade(ucp: UCP, trade: Trade, block_num) -> Optional[float]:
+def calc_surplus_per_trade(ucp: UCP, trade: Trade, block_num) -> Optional[dict]:
     # todo test if direction of trades is actually valid
 
-    pool = usdc_weth
+    pool = Pools().get_fitting_pool(trade)
+
     order = helper.order(
         pool=pool.checksum(),
-        prices=[ucp[Tokens.USDC], ucp[Tokens.WETH]],
+        prices=[ucp[pool.TOKEN0], ucp[pool.TOKEN1]],
         block_num=block_num,
     )
     cow_amm_buy = order.sellAmount
@@ -56,7 +57,10 @@ def calc_surplus_per_trade(ucp: UCP, trade: Trade, block_num) -> Optional[float]
     if trade.isZeroToOne(pool):
         # todo need an ETH pricelookup for more general pools
         surplus = surplus * ucp[selling_token] / ucp[buying_token]
-    return surplus
+    return {
+        "surplus": surplus,
+        "pool": pool.ADDRESS
+    }
 
 
 def calc_gas(gas_price: int):
@@ -72,22 +76,32 @@ def calc_envy(row):
         row["tokens"], row["clearingPrices"], row["trades"]
     )
 
+
     for trade in eligible_settlement_trades:
-        surplus = calc_surplus_per_trade(ucp, trade, row["call_block_number"])
+        surplus_data = calc_surplus_per_trade(ucp, trade, row["call_block_number"])
         # todo decide what to do on multiple trades, currently takes the first
-        if surplus:
+        if surplus_data:
+            surplus = surplus_data["surplus"]
+            pool = surplus_data["pool"]
             gas = calc_gas(row["gas_price"])
             trade_envy = surplus - gas
-            return trade_envy
+            return {
+                "trade_envy": trade_envy,
+                "pool": pool
+            }
 
-    return None
+    return {
+        "trade_envy": None,
+        "pool": None
+    }
 
 
 def create_envy_data(infile: str, outfile: str):
     ucp_data = pd.read_csv(infile)
     trade_envy_per_settlement = [calc_envy(row) for _, row in tqdm(ucp_data.iterrows())]
 
-    ucp_data["trade_envy"] = trade_envy_per_settlement
+    ucp_data["trade_envy"] = [x["trade_envy"] for x in trade_envy_per_settlement]
+    ucp_data["pool"] = [x["pool"] for x in trade_envy_per_settlement]
     ucp_data.to_csv(outfile)
 
 

@@ -5,13 +5,6 @@ from dataclasses import dataclass
 
 w3 = Web3()
 
-
-@dataclass(frozen=True)
-class Contracts:
-    HELPER_CONTRACT: ClassVar[str] = "0x3FF0041A614A9E6Bf392cbB961C97DA214E9CB31"
-    USDC_WETH_POOL: ClassVar[str] = "0xf08d4dea369c456d26a3168ff0024b904f2d8b91"
-
-
 @dataclass(frozen=True)
 class Token:
     name: str
@@ -43,11 +36,9 @@ class BCowPool:
         return w3.to_checksum_address(self.ADDRESS)
 
 
-usdc_weth = BCowPool(Contracts.USDC_WETH_POOL, Tokens.USDC, Tokens.WETH)
-
-
+@dataclass(frozen=True)
 class Pools:
-    USDC_WETH = usdc_weth
+    USDC_WETH = BCowPool("0xf08d4dea369c456d26a3168ff0024b904f2d8b91", Tokens.USDC, Tokens.WETH)
 
     def get_pools(self) -> List[BCowPool]:
         return [self.USDC_WETH]
@@ -64,10 +55,25 @@ class Pools:
         tokens = list(set(tokens))
         return {token.address: token for token in tokens}
 
+    def get_pool_lookup(self) -> Dict[Tuple[str, str], BCowPool]:
+        return {(pool.TOKEN0.address, pool.TOKEN1.address): pool for pool in self.get_pools()}
+
+    def get_fitting_pool(self, trade: 'Trade') -> BCowPool:
+        lookup = self.get_pool_lookup()
+
+        if (trade.buyToken.address, trade.sellToken.address) in lookup:
+            return lookup[(trade.buyToken.address, trade.sellToken.address)]
+        elif (trade.sellToken.address, trade.buyToken.address) in lookup:
+            return lookup[(trade.sellToken.address, trade.buyToken.address)]
+        else:
+            raise ValueError("Trade not supported by any pool")
+
+    def pair_is_supported(self, buy_token: str, sell_token: str) -> bool:
+        lookup = self.get_pool_lookup()
+        return (buy_token, sell_token) in lookup or (sell_token, buy_token) in lookup
 
 addr_to_token = Pools().get_token_lookup()
 SUPPORTED_POOLS = Pools().get_supported_pools()
-
 
 @dataclass(frozen=True)
 class CoWAmmOrderData:
@@ -156,10 +162,7 @@ class SettlementTrades:
             buy_price = int(prices[int(trade["buyTokenIndex"])])
             sell_price = int(prices[int(trade["sellTokenIndex"])])
 
-            is_supported = (buy_token, sell_token) in SUPPORTED_POOLS or (
-                sell_token,
-                buy_token,
-            ) in SUPPORTED_POOLS
+            is_supported = Pools().pair_is_supported(buy_token, sell_token)
             if not is_supported:
                 continue
 
