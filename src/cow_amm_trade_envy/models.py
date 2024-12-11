@@ -1,9 +1,10 @@
 from web3 import Web3
 
-from typing import ClassVar, Dict, List, Tuple
+from typing import Dict, List, Tuple
 from dataclasses import dataclass
 
 w3 = Web3()
+
 
 @dataclass(frozen=True)
 class Token:
@@ -38,7 +39,9 @@ class BCowPool:
 
 @dataclass(frozen=True)
 class Pools:
-    USDC_WETH = BCowPool("0xf08d4dea369c456d26a3168ff0024b904f2d8b91", Tokens.USDC, Tokens.WETH)
+    USDC_WETH = BCowPool(
+        "0xf08d4dea369c456d26a3168ff0024b904f2d8b91", Tokens.USDC, Tokens.WETH
+    )
 
     def get_pools(self) -> List[BCowPool]:
         return [self.USDC_WETH]
@@ -56,9 +59,12 @@ class Pools:
         return {token.address: token for token in tokens}
 
     def get_pool_lookup(self) -> Dict[Tuple[str, str], BCowPool]:
-        return {(pool.TOKEN0.address, pool.TOKEN1.address): pool for pool in self.get_pools()}
+        return {
+            (pool.TOKEN0.address, pool.TOKEN1.address): pool
+            for pool in self.get_pools()
+        }
 
-    def get_fitting_pool(self, trade: 'Trade') -> BCowPool:
+    def get_fitting_pool(self, trade: "Trade") -> BCowPool:
         lookup = self.get_pool_lookup()
 
         if (trade.buyToken.address, trade.sellToken.address) in lookup:
@@ -72,8 +78,10 @@ class Pools:
         lookup = self.get_pool_lookup()
         return (buy_token, sell_token) in lookup or (sell_token, buy_token) in lookup
 
+
 addr_to_token = Pools().get_token_lookup()
 SUPPORTED_POOLS = Pools().get_supported_pools()
+
 
 @dataclass(frozen=True)
 class CoWAmmOrderData:

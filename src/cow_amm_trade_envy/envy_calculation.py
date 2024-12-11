@@ -57,10 +57,7 @@ def calc_surplus_per_trade(ucp: UCP, trade: Trade, block_num) -> Optional[dict]:
     if trade.isZeroToOne(pool):
         # todo need an ETH pricelookup for more general pools
         surplus = surplus * ucp[selling_token] / ucp[buying_token]
-    return {
-        "surplus": surplus,
-        "pool": pool.ADDRESS
-    }
+    return {"surplus": surplus, "pool": pool.ADDRESS}
 
 
 def calc_gas(gas_price: int):
@@ -76,7 +73,6 @@ def calc_envy(row):
         row["tokens"], row["clearingPrices"], row["trades"]
     )
 
-
     for trade in eligible_settlement_trades:
         surplus_data = calc_surplus_per_trade(ucp, trade, row["call_block_number"])
         # todo decide what to do on multiple trades, currently takes the first
@@ -85,15 +81,9 @@ def calc_envy(row):
             pool = surplus_data["pool"]
             gas = calc_gas(row["gas_price"])
             trade_envy = surplus - gas
-            return {
-                "trade_envy": trade_envy,
-                "pool": pool
-            }
+            return {"trade_envy": trade_envy, "pool": pool}
 
-    return {
-        "trade_envy": None,
-        "pool": None
-    }
+    return {"trade_envy": None, "pool": None}
 
 
 def create_envy_data(infile: str, outfile: str):

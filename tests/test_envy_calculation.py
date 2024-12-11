@@ -23,7 +23,10 @@ def test_calc_envy1():
     row_as_series = get_row_from_string(data_row_str)
     result = calc_envy(row_as_series)
     print(result)
-    assert result == {'trade_envy': -3186628725355451, 'pool': '0xf08d4dea369c456d26a3168ff0024b904f2d8b91'}
+    assert result == {
+        "trade_envy": -3186628725355451,
+        "pool": "0xf08d4dea369c456d26a3168ff0024b904f2d8b91",
+    }
 
 
 def test_calc_envy2():

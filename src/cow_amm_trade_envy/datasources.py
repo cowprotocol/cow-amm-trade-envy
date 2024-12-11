@@ -19,6 +19,9 @@ DB_FILE = "cache.db"
 conn = sqlite3.connect(DB_FILE)
 cursor = conn.cursor()
 
+# todo support multiple chains, also requires changes in models
+
+
 # Create table if it doesn't exist
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS order_cache (
