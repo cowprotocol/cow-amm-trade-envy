@@ -83,12 +83,16 @@ def calc_envy(row):
     return None
 
 
-if __name__ == "__main__":
-    infile = "data/cow_amm_ucp.csv"
-    outfile = "data/cow_amm_missed_surplus.csv"
-
+def create_envy_data(infile: str, outfile: str):
     ucp_data = pd.read_csv(infile)
     trade_envy_per_settlement = [calc_envy(row) for _, row in tqdm(ucp_data.iterrows())]
 
     ucp_data["trade_envy"] = trade_envy_per_settlement
     ucp_data.to_csv(outfile)
+
+
+if __name__ == "__main__":
+    infile = "data/cow_amm_ucp.csv"
+    outfile = "data/cow_amm_missed_surplus.csv"
+
+    create_envy_data(infile, outfile)

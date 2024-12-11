@@ -1,9 +1,9 @@
 from dagster import job
 from cow_amm_trade_envy.assets.assets import (
-    run_download_dune,
+    dune_settlement_data,
 )
 
 
 @job
 def envy_job():
-    download_dune = run_download_dune()
+    run_dune_settlement_data = dune_settlement_data()

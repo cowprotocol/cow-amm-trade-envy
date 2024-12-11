@@ -7,8 +7,8 @@ format:
 lint:
 	uv run ruff check
 
-run-dagster:
+dagster-run:
 	uv run dagster dev -w workspace.yaml
 
-render-report:
+report-render:
 	uv run src/cow_amm_trade_envy/render_report.py
