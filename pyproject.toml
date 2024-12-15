@@ -9,6 +9,7 @@ dependencies = [
     "dagster>=1.9.4",
     "notebook>=7.3.1",
     "pandas>=2.2.3",
+    "plotly>=5.24.1",
     "pytest>=8.3.4",
     "python-dotenv>=1.0.1",
     "quarto>=0.1.0",

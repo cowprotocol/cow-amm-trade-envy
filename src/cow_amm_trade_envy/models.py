@@ -144,10 +144,10 @@ class Trade:
     sellPrice: int
 
     def isZeroToOne(self, pool: BCowPool) -> bool:
-        return self.buyToken == pool.TOKEN1 and self.sellToken == pool.TOKEN0
+        return self.sellToken == pool.TOKEN0 and self.buyToken == pool.TOKEN1
 
     def isOneToZero(self, pool: BCowPool) -> bool:
-        return self.buyToken == pool.TOKEN0 and self.sellToken == pool.TOKEN1
+        return self.sellToken == pool.TOKEN1 and self.buyToken == pool.TOKEN0
 
 
 @dataclass(frozen=True)
