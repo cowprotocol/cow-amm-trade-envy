@@ -32,18 +32,21 @@ def calc_surplus_per_trade(ucp: UCP, trade: Trade, block_num) -> Optional[dict]:
         prices=[ucp[pool.TOKEN0], ucp[pool.TOKEN1]],
         block_num=block_num,
     )
+
+    # The CoW AMM takes the counterparty of a CoW
+    # The helper gives us the trade the CoW AMM would want to make
     order_and_trade_aligned = (
-        order.buyToken == trade.buyToken and order.sellToken == trade.sellToken
+        order.buyToken == trade.sellToken and order.sellToken == trade.buyToken
     )
     if not order_and_trade_aligned:
         return None
 
 
     # actual calculation
-
-    cow_amm_sell_amount = order.sellAmount
-    max_sell_amount = min(trade.sellAmount, cow_amm_sell_amount)
-    max_buy_amount = order.buyAmount * max_sell_amount / cow_amm_sell_amount
+    cow_amm_buy_amount = order.buyAmount
+    max_cow_amm_buy_amount = min(trade.sellAmount, cow_amm_buy_amount)
+    # todo lookup price if not exhausting full helper-recommendation
+    max_cow_amm_sell_amount = order.sellAmount * max_cow_amm_buy_amount / cow_amm_buy_amount
 
     if trade.isOneToZero(pool):
         selling_token, buying_token = pool.TOKEN1, pool.TOKEN0
@@ -52,9 +55,10 @@ def calc_surplus_per_trade(ucp: UCP, trade: Trade, block_num) -> Optional[dict]:
     else:
         return None  #  shouldnt even happen when we only use eligible trades
 
-    executed_sell_amount = max_buy_amount * ucp[buying_token] / ucp[selling_token]
-    surplus = executed_sell_amount - max_sell_amount
-    if trade.isZeroToOne(pool):
+    executed_buy_amount = max_cow_amm_buy_amount * ucp[selling_token] / ucp[buying_token]
+    surplus = max_cow_amm_sell_amount - executed_buy_amount
+
+    if trade.isOneToZero(pool):
         # todo need an ETH pricelookup for more general pools
         surplus = surplus * ucp[selling_token] / ucp[buying_token]
     return {"surplus": surplus, "pool": pool.ADDRESS}
