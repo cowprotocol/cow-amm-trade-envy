@@ -122,22 +122,26 @@ def get_logs(tx_hash: str):
 
 
 def get_highest_block(network: str) -> int:
-    if network not in supported_networks:
-        raise ValueError(
-            f"Network {network} not supported. Supported networks are {supported_networks}"
-        )
+    if network == "ethereum":
+        highest_block = w3.eth.get_block_number()
+    else:
+        raise ValueError(f"Network {network} not supported")
 
-    highest_block = 20842716
+    highest_block = 20842716  # todo remove this
     return highest_block
 
 
-def get_last_block_ingested(network: str) -> int:
-    if network not in supported_networks:
-        raise ValueError(
-            f"Network {network} not supported. Supported networks are {supported_networks}"
-        )
+def get_last_block_ingested(
+    network: str, conn: duckdb.DuckDBPyConnection, table_name: str
+) -> int:
+    res = conn.query(f"SELECT MAX(call_block_number) FROM {table_name}")
+    final_block_ingested = res.fetchdf().iloc[0, 0]
+    if pd.isna(final_block_ingested):
+        final_block_ingested = 20842476  # todo define default minimum block somewhere
+    else:
+        final_block_ingested = int(final_block_ingested)
 
-    final_block_ingested = 20842476
+    final_block_ingested = 20842476  # todo remove this
     return final_block_ingested
 
 
@@ -161,8 +165,12 @@ def query_settle_data(network: str, left: int, right: int) -> pl.DataFrame:
 
 
 def populate_settlement_table(network: str):
-    current_block = get_highest_block(network)
-    beginning_block = get_last_block_ingested(network) + 1
+    table_name = f"{network}_settle"
+
+    with duckdb.connect(database=DB_FILE) as conn:
+        current_block = get_highest_block(network)
+        beginning_block = get_last_block_ingested(network, conn, table_name) + 1
+
     splits = split_intervals(beginning_block, current_block, INTERVAL_LENGTH)
 
     dfs = []
@@ -174,8 +182,6 @@ def populate_settlement_table(network: str):
     df = pl.concat(dfs)
     df = df.to_pandas()
     df["gas_price"] = df["gas_price"].astype(int)
-
-    table_name = f"{network}_settle"
 
     create_table_query = f"""
     CREATE TABLE IF NOT EXISTS {table_name} (
