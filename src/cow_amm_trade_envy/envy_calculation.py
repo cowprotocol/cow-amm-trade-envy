@@ -84,7 +84,8 @@ def calc_envy_per_settlement(row):
             pool = surplus_data["pool"]
             gas = calc_gas(row["gas_price"])
             trade_envy = surplus - gas
-            return {"trade_envy": trade_envy, "pool": pool}
+            return {"trade_envy": trade_envy*1e-18
+                , "pool": pool}
 
     return {"trade_envy": None, "pool": None}
 
