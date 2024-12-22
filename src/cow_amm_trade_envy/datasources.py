@@ -131,9 +131,7 @@ def get_highest_block(network: str) -> int:
     return highest_block
 
 
-def get_last_block_ingested(
-    network: str, conn: duckdb.DuckDBPyConnection, table_name: str
-) -> int:
+def get_last_block_ingested(conn: duckdb.DuckDBPyConnection, table_name: str) -> int:
     res = conn.query(f"SELECT MAX(call_block_number) FROM {table_name}")
     final_block_ingested = res.fetchdf().iloc[0, 0]
     if pd.isna(final_block_ingested):
@@ -169,7 +167,7 @@ def populate_settlement_table(network: str):
 
     with duckdb.connect(database=DB_FILE) as conn:
         current_block = get_highest_block(network)
-        beginning_block = get_last_block_ingested(network, conn, table_name) + 1
+        beginning_block = get_last_block_ingested(conn, table_name) + 1
 
     splits = split_intervals(beginning_block, current_block, INTERVAL_LENGTH)
 
