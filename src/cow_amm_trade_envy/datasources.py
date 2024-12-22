@@ -15,7 +15,7 @@ node_url = os.getenv("NODE_URL")
 w3 = Web3(Web3.HTTPProvider(node_url, request_kwargs={"timeout": 60}))
 
 # Setup SQLite
-DB_FILE = "cache.db"
+DB_FILE = "data.db"
 conn = sqlite3.connect(DB_FILE)
 cursor = conn.cursor()
 

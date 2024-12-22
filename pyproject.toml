@@ -7,15 +7,17 @@ requires-python = ">=3.12"
 dependencies = [
     "dagit>=1.9.4",
     "dagster>=1.9.4",
+    "dune-spice>=0.2.5",
     "notebook>=7.3.1",
     "pandas>=2.2.3",
     "plotly>=5.24.1",
+    "pyarrow>=18.1.0",
     "pytest>=8.3.4",
     "python-dotenv>=1.0.1",
     "quarto>=0.1.0",
     "ruff>=0.8.2",
     "tqdm>=4.67.1",
-    "web3==7.6.0",
+    "web3==7.2",
 ]
 
 [build-system]

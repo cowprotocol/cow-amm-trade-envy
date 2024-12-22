@@ -4,13 +4,16 @@ from tqdm import tqdm
 from cow_amm_trade_envy.models import UCP, Pools, SettlementTrades, Trade
 from cow_amm_trade_envy.datasources import BCoWHelper
 from typing import Optional
+import sqlite3
 
-# todo add ingestion from dune
 # todo dockerize
-# todo store dune data in postgres
-
 
 helper = BCoWHelper()
+
+
+DB_FILE = "data.db"
+conn = sqlite3.connect(DB_FILE)
+cursor = conn.cursor()
 
 
 def preprocess_row(row: pd.Series) -> pd.Series:
@@ -23,10 +26,7 @@ def preprocess_row(row: pd.Series) -> pd.Series:
 
 
 def calc_surplus_per_trade(ucp: UCP, trade: Trade, block_num) -> Optional[dict]:
-    # todo test if direction of trades is actually valid
-
     pool = Pools().get_fitting_pool(trade)
-
     order = helper.order(
         pool=pool.checksum(),
         prices=[ucp[pool.TOKEN0], ucp[pool.TOKEN1]],
@@ -41,12 +41,13 @@ def calc_surplus_per_trade(ucp: UCP, trade: Trade, block_num) -> Optional[dict]:
     if not order_and_trade_aligned:
         return None
 
-
     # actual calculation
     cow_amm_buy_amount = order.buyAmount
     max_cow_amm_buy_amount = min(trade.sellAmount, cow_amm_buy_amount)
-    # todo lookup price if not exhausting full helper-recommendation
-    max_cow_amm_sell_amount = order.sellAmount * max_cow_amm_buy_amount / cow_amm_buy_amount
+    # todo lookup price if not CoW is not fully filled
+    max_cow_amm_sell_amount = (
+        order.sellAmount * max_cow_amm_buy_amount / cow_amm_buy_amount
+    )
 
     if trade.isOneToZero(pool):
         selling_token, buying_token = pool.TOKEN1, pool.TOKEN0
@@ -55,7 +56,9 @@ def calc_surplus_per_trade(ucp: UCP, trade: Trade, block_num) -> Optional[dict]:
     else:
         return None  #  shouldnt even happen when we only use eligible trades
 
-    executed_buy_amount = max_cow_amm_buy_amount * ucp[selling_token] / ucp[buying_token]
+    executed_buy_amount = (
+        max_cow_amm_buy_amount * ucp[selling_token] / ucp[buying_token]
+    )
     surplus = max_cow_amm_sell_amount - executed_buy_amount
 
     if trade.isOneToZero(pool):
@@ -68,7 +71,7 @@ def calc_gas(gas_price: int):
     return gas_price * 100_000
 
 
-def calc_envy(row):
+def calc_envy_per_settlement(row):
     row = preprocess_row(row)
 
     ucp = UCP.from_lists(row["tokens"], row["clearingPrices"])
@@ -89,17 +92,24 @@ def calc_envy(row):
     return {"trade_envy": None, "pool": None}
 
 
-def create_envy_data(infile: str, outfile: str):
+def create_envy_data(network: str, outfile: str):
+    # load table
+    ucp_data = pd.read_sql_query(f"SELECT * FROM {network}_settle", conn)
 
-    ucp_data = pd.read_csv(infile)
-    trade_envy_per_settlement = [calc_envy(row) for _, row in tqdm(ucp_data.iterrows())]
+    ucp_data = ucp_data.sort_values("call_block_number", ascending=False)
+    ucp_data.reset_index(drop=True, inplace=True)
+
+    trade_envy_per_settlement = [
+        calc_envy_per_settlement(row) for _, row in tqdm(ucp_data.iterrows())
+    ]
     ucp_data["trade_envy"] = [x["trade_envy"] for x in trade_envy_per_settlement]
     ucp_data["pool"] = [x["pool"] for x in trade_envy_per_settlement]
+
     ucp_data.to_csv(outfile)
 
 
 if __name__ == "__main__":
-    infile = "data/cow_amm_ucp.csv"
     outfile = "data/cow_amm_missed_surplus.csv"
 
-    create_envy_data(infile, outfile)
+    network = "ethereum"
+    create_envy_data(network, outfile)
