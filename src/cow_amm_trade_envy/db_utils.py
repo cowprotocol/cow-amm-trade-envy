@@ -33,4 +33,4 @@ def upsert_data(table_name: str, df: pd.DataFrame, conn: duckdb.DuckDBPyConnecti
     """
 
     df = df[columns] # duckdb reads from in-memory DB, dont delete this
-    #conn.execute(upsert_query)
+    conn.execute(upsert_query)

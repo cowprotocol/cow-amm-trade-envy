@@ -77,17 +77,17 @@ def calc_envy_per_settlement(row):
         row["tokens"], row["clearingPrices"], row["trades"]
     )
 
+    envy_list = []
     for trade in eligible_settlement_trades:
         surplus_data = calc_surplus_per_trade(ucp, trade, row["call_block_number"])
         if surplus_data:
             surplus = surplus_data["surplus"]
             pool = surplus_data["pool"]
             gas = calc_gas(row["gas_price"])
-            trade_envy = surplus - gas
-            return {"trade_envy": trade_envy*1e-18
-                , "pool": pool}
+            trade_envy = (surplus - gas)*1e-18 # convert to ETH
+            envy_list.append({"trade_envy": trade_envy, "pool": pool})
 
-    return {"trade_envy": None, "pool": None}
+    return envy_list
 
 
 def create_envy_data(network: str):
@@ -101,32 +101,44 @@ def create_envy_data(network: str):
     trade_envy_per_settlement = [
         calc_envy_per_settlement(row) for _, row in tqdm(ucp_data.iterrows())
     ]
-    ucp_data["trade_envy"] = [x["trade_envy"] for x in trade_envy_per_settlement]
-    ucp_data["pool"] = [x["pool"] for x in trade_envy_per_settlement]
+
+    df_te = pd.DataFrame({"data": trade_envy_per_settlement})
+    # if trade_envy is none, pool and trade_envy are also none
+    # otherwise unpack the list
+    df_te = df_te.explode("data")
+    df_te = df_te.dropna()
+    df_te["pool"] = df_te["data"].apply(lambda x: None if pd.isna(x) else x["pool"])
+    df_te["trade_envy"] = df_te["data"].apply(lambda x: None if pd.isna(x) else x["trade_envy"])
+
+
+    ucp_data["trade_envy"] = df_te["trade_envy"]
+    ucp_data["pool"] = df_te["pool"]
 
     envy_data = pd.DataFrame(
         {
             "call_tx_hash": ucp_data["call_tx_hash"],
-            "trade_envy": [x["trade_envy"] for x in trade_envy_per_settlement],
-            "pool": [x["pool"] for x in trade_envy_per_settlement],
+            "trade_envy": ucp_data["trade_envy"],
+            "pool": ["None" if pd.isna(x) else x for x in ucp_data["pool"]],
         }
     )
 
     query_recreate_table = f"""
-    DROP TABLE IF EXISTS {network}_envy;
-    CREATE TABLE {network}_envy (
-        call_tx_hash BLOB PRIMARY KEY,
-        trade_envy NUMERIC,
-        pool TEXT
+    CREATE TABLE IF NOT EXISTS {network}_envy (
+    call_tx_hash BLOB,
+    pool TEXT,
+    trade_envy NUMERIC,
+    PRIMARY KEY (call_tx_hash, pool)
     );
     """
+
     with duckdb.connect(database=DB_FILE) as conn:
         conn.execute(query_recreate_table)
         upsert_data(f"{network}_envy", envy_data, conn)
 
 
-    outfile = "data/cow_amm_missed_surplus.csv"
-    ucp_data.to_csv(outfile) # keep this for now to see changes in the diffs
+    if network == "ethereum":
+        outfile = "data/cow_amm_missed_surplus.csv"
+        ucp_data.to_csv(outfile) # keep this for now to see changes in the diffs
 
 
 if __name__ == "__main__":

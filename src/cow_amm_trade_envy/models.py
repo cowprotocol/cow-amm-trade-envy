@@ -25,10 +25,16 @@ class Tokens:
         address="0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".lower(),
         decimals=18,
     )
+    BAL = Token(
+        name="BAL",
+        address="0xba100000625a3754423978a60c9317c58a424e3d".lower(),
+        decimals=18,
+    )
 
 
 @dataclass(frozen=True)
 class BCowPool:
+    NAME: str
     ADDRESS: str
     TOKEN0: Token
     TOKEN1: Token
@@ -40,11 +46,17 @@ class BCowPool:
 @dataclass(frozen=True)
 class Pools:
     USDC_WETH = BCowPool(
+        "USDC-WETH",
         "0xf08d4dea369c456d26a3168ff0024b904f2d8b91", Tokens.USDC, Tokens.WETH
     )
+    BAL_WETH = BCowPool(
+        "BAL-WETH",
+        "0xf8f5b88328dff3d19e5f4f11a9700293ac8f638f", Tokens.BAL, Tokens.WETH
+    )
+
 
     def get_pools(self) -> List[BCowPool]:
-        return [self.USDC_WETH]
+        return [self.USDC_WETH, self.BAL_WETH]
 
     def get_supported_pools(self) -> Dict[Tuple[str, str], BCowPool]:
         return {
