@@ -23,10 +23,7 @@ def test_calc_envy1():
     row_as_series = get_row_from_string(data_row_str)
     result = calc_envy_per_settlement(row_as_series)
     print(result)
-    assert result == {
-        "trade_envy": None,
-        "pool": None,
-    }
+    assert result == []
 
 
 def test_calc_envy2():
@@ -34,7 +31,7 @@ def test_calc_envy2():
 
     row_as_series = get_row_from_string(data_row_str)
     result = calc_envy_per_settlement(row_as_series)
-    assert result == {"trade_envy": None, "pool": None}
+    assert result == []
 
 
 def test_calc_envy3():
@@ -42,5 +39,7 @@ def test_calc_envy3():
     row_as_series = get_row_from_string(data_row_str)
     result = calc_envy_per_settlement(row_as_series)
 
-    assert result["trade_envy"] == -2311335713655648.0
+    len(result) == 1
+    result = result[0]
+    assert result["trade_envy"] == -2311335713655648*1e-18
     assert result["pool"] == "0xf08d4dea369c456d26a3168ff0024b904f2d8b91"
