@@ -76,10 +76,9 @@ def fetch_from_cache_or_query(pool: str, prices: list, block_num: int | None, co
         return json.loads(result[0])
     else:
         order_data = query(pool, prices, block_num, contract)
-        df_insert = pd.DataFrame({
-            "key": [cache_key],
-            "response": [json.dumps(order_data)]
-        })
+        df_insert = pd.DataFrame(
+            {"key": [cache_key], "response": [json.dumps(order_data)]}
+        )
         with duckdb.connect(database=DB_FILE) as conn:
             # doesnt need to be upsert but shouldnt hurt
             upsert_data("order_cache", df_insert, conn)
@@ -90,11 +89,13 @@ class BCoWHelper:
     """Helper class for interacting with the blockchain contract."""
 
     def __init__(self):
-        self.address = "0x3FF0041A614A9E6Bf392cbB961C97DA214E9CB31"
+        self.address = "0x3FF0041A614A9E6Bf392cbB961C97DA214E9CB31"  # todo different on other chains
         self.abi = BCOW_HELPER_ABI
         self.contract = w3.eth.contract(address=self.address, abi=self.abi)
 
-    def order(self, pool: str, prices: list, block_num: int | None = None) -> CoWAmmOrderData:
+    def order(
+        self, pool: str, prices: list, block_num: int | None = None
+    ) -> CoWAmmOrderData:
         order = fetch_from_cache_or_query(pool, prices, block_num, self.contract)
         return CoWAmmOrderData.from_order_response(order)
 
@@ -113,10 +114,7 @@ def get_logs(tx_hash: str):
     else:
         receipt = w3.eth.get_transaction_receipt(tx_hash)
         logs = json.dumps(receipt["logs"], default=json_serializer)
-        df_insert = pd.DataFrame({
-            "key": [cache_key],
-            "response": [logs]
-        })
+        df_insert = pd.DataFrame({"key": [cache_key], "response": [logs]})
         with duckdb.connect(database=DB_FILE) as conn:
             # doesnt need to be upsert but shouldnt hurt
             upsert_data("receipt_cache", df_insert, conn)
@@ -143,22 +141,26 @@ def get_last_block_ingested(network: str) -> int:
     return final_block_ingested
 
 
-def split_intervals(beginning_block: int, current_block: int, interval_len: int) -> list:
+def split_intervals(
+    beginning_block: int, current_block: int, interval_len: int
+) -> list:
     splits = []
     for start in range(beginning_block, current_block + 1, interval_len):
         end = min(start + interval_len - 1, current_block)
         splits.append((start, end))
     return splits
 
+
 @retry(stop=stop_after_attempt(5), wait=wait_fixed(2))
 def query_settle_data(network: str, left: int, right: int) -> pl.DataFrame:
-    df = spice.query(QUERY_NR, parameters={"start_block": left, "end_block": right,
-                                           "network": network})
+    df = spice.query(
+        QUERY_NR,
+        parameters={"start_block": left, "end_block": right, "network": network},
+    )
     return df
 
 
 def populate_settlement_table(network: str):
-
     current_block = get_highest_block(network)
     beginning_block = get_last_block_ingested(network) + 1
     splits = split_intervals(beginning_block, current_block, INTERVAL_LENGTH)

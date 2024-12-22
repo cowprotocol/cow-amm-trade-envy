@@ -30,6 +30,11 @@ class Tokens:
         address="0xba100000625a3754423978a60c9317c58a424e3d".lower(),
         decimals=18,
     )
+    UNI = Token(
+        name="UNI",
+        address="0x1f9840a85d5af5bf1d1762f925bdaddc4201f984".lower(),
+        decimals=18,
+    )
 
 
 @dataclass(frozen=True)
@@ -45,18 +50,27 @@ class BCowPool:
 
 @dataclass(frozen=True)
 class Pools:
-    USDC_WETH = BCowPool(
-        "USDC-WETH",
-        "0xf08d4dea369c456d26a3168ff0024b904f2d8b91", Tokens.USDC, Tokens.WETH
-    )
-    BAL_WETH = BCowPool(
-        "BAL-WETH",
-        "0xf8f5b88328dff3d19e5f4f11a9700293ac8f638f", Tokens.BAL, Tokens.WETH
-    )
-
+    pools = [
+        BCowPool(
+            "USDC-WETH",
+            "0xf08d4dea369c456d26a3168ff0024b904f2d8b91",
+            Tokens.USDC,
+            Tokens.WETH,
+        ),
+        BCowPool(
+            "BAL-WETH",
+            "0xf8f5b88328dff3d19e5f4f11a9700293ac8f638f",
+            Tokens.BAL,
+            Tokens.WETH,
+        ),
+        #    BCowPool( # todo find out why helper function call reverts
+        #    "WETH-UNI",
+        #    "0xa81b22966f1841e383e69393175e2cc65f0a8854", Tokens.WETH, Tokens.UNI,
+        # )
+    ]
 
     def get_pools(self) -> List[BCowPool]:
-        return [self.USDC_WETH, self.BAL_WETH]
+        return self.pools
 
     def get_supported_pools(self) -> Dict[Tuple[str, str], BCowPool]:
         return {

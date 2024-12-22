@@ -60,8 +60,10 @@ def calc_surplus_per_trade(ucp: UCP, trade: Trade, block_num) -> Optional[dict]:
     surplus = max_cow_amm_sell_amount - executed_buy_amount
 
     if trade.isOneToZero(pool):
-        # todo need an ETH pricelookup for more general pools
         surplus = surplus * ucp[selling_token] / ucp[buying_token]
+        # if buying_token != Tokens.WETH:
+        #    # todo need an ETH pricelookup for more general pools
+        #    pass
     return {"surplus": surplus, "pool": pool.ADDRESS}
 
 
@@ -85,7 +87,7 @@ def calc_envy_per_settlement(row):
             surplus = surplus_data["surplus"]
             pool = surplus_data["pool"]
             gas = calc_gas(row["gas_price"])
-            trade_envy = (surplus - gas)*1e-18 # convert to ETH
+            trade_envy = (surplus - gas) * 1e-18  # convert to ETH
             envy_list.append({"trade_envy": trade_envy, "pool": pool})
 
     return envy_list
@@ -106,7 +108,9 @@ def create_envy_data(network: str):
     df_te = pd.DataFrame({"data": trade_envy_per_settlement})
     df_te = df_te.explode("data")
     df_te["pool"] = df_te["data"].apply(lambda x: None if pd.isna(x) else x["pool"])
-    df_te["trade_envy"] = df_te["data"].apply(lambda x: None if pd.isna(x) else x["trade_envy"])
+    df_te["trade_envy"] = df_te["data"].apply(
+        lambda x: None if pd.isna(x) else x["trade_envy"]
+    )
     ucp_data["trade_envy"] = df_te["trade_envy"]
     ucp_data["pool"] = df_te["pool"]
 
@@ -133,7 +137,7 @@ def create_envy_data(network: str):
 
     if network == "ethereum":
         outfile = "data/cow_amm_missed_surplus.csv"
-        ucp_data.to_csv(outfile) # keep this for now to see changes in the diffs
+        ucp_data.to_csv(outfile)  # keep this for now to see changes in the diffs
 
 
 if __name__ == "__main__":

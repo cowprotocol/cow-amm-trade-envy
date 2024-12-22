@@ -21,10 +21,15 @@ def upsert_data(table_name: str, df: pd.DataFrame, conn: duckdb.DuckDBPyConnecti
     columns = conn.table(table_name).columns
     primary_keys = get_pkeys(table_name, conn)
     update_clause = ", ".join(
-        [f"{column} = EXCLUDED.{column}" for column in columns if
-         column not in primary_keys]
+        [
+            f"{column} = EXCLUDED.{column}"
+            for column in columns
+            if column not in primary_keys
+        ]
     )
-    conflict_clause = f"ON CONFLICT ({', '.join(primary_keys)}) DO UPDATE SET {update_clause}"
+    conflict_clause = (
+        f"ON CONFLICT ({', '.join(primary_keys)}) DO UPDATE SET {update_clause}"
+    )
 
     upsert_query = f"""
     INSERT INTO {table_name}
@@ -32,5 +37,5 @@ def upsert_data(table_name: str, df: pd.DataFrame, conn: duckdb.DuckDBPyConnecti
     {conflict_clause}
     """
 
-    df = df[columns] # duckdb reads from in-memory DB, dont delete this
+    df = df[columns]  # duckdb reads from in-memory DB, dont delete this
     conn.execute(upsert_query)

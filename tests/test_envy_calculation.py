@@ -41,5 +41,5 @@ def test_calc_envy3():
 
     len(result) == 1
     result = result[0]
-    assert result["trade_envy"] == -2311335713655648*1e-18
+    assert result["trade_envy"] == -2311335713655648 * 1e-18
     assert result["pool"] == "0xf08d4dea369c456d26a3168ff0024b904f2d8b91"
