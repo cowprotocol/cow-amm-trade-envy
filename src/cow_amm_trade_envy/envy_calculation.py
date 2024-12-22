@@ -41,7 +41,7 @@ def calc_surplus_per_trade(ucp: UCP, trade: Trade, block_num) -> Optional[dict]:
     # actual calculation
     cow_amm_buy_amount = order.buyAmount
     max_cow_amm_buy_amount = min(trade.sellAmount, cow_amm_buy_amount)
-    # todo lookup price if not CoW is not fully filled
+    # todo lookup price if CoW is not fully filled
     max_cow_amm_sell_amount = (
         order.sellAmount * max_cow_amm_buy_amount / cow_amm_buy_amount
     )
@@ -51,7 +51,8 @@ def calc_surplus_per_trade(ucp: UCP, trade: Trade, block_num) -> Optional[dict]:
     elif trade.isZeroToOne(pool):
         selling_token, buying_token = pool.TOKEN0, pool.TOKEN1
     else:
-        return None  #  shouldnt even happen when we only use eligible trades
+        #  shouldnt even happen when we only use eligible trades
+        raise ValueError("Trade not supported")
 
     executed_buy_amount = (
         max_cow_amm_buy_amount * ucp[selling_token] / ucp[buying_token]
@@ -103,14 +104,9 @@ def create_envy_data(network: str):
     ]
 
     df_te = pd.DataFrame({"data": trade_envy_per_settlement})
-    # if trade_envy is none, pool and trade_envy are also none
-    # otherwise unpack the list
     df_te = df_te.explode("data")
-    df_te = df_te.dropna()
     df_te["pool"] = df_te["data"].apply(lambda x: None if pd.isna(x) else x["pool"])
     df_te["trade_envy"] = df_te["data"].apply(lambda x: None if pd.isna(x) else x["trade_envy"])
-
-
     ucp_data["trade_envy"] = df_te["trade_envy"]
     ucp_data["pool"] = df_te["pool"]
 
@@ -134,7 +130,6 @@ def create_envy_data(network: str):
     with duckdb.connect(database=DB_FILE) as conn:
         conn.execute(query_recreate_table)
         upsert_data(f"{network}_envy", envy_data, conn)
-
 
     if network == "ethereum":
         outfile = "data/cow_amm_missed_surplus.csv"

@@ -1,5 +1,4 @@
 import os
-import duckdb
 from dotenv import load_dotenv
 from web3 import Web3
 from web3.types import HexBytes
@@ -8,10 +7,20 @@ from cow_amm_trade_envy.constants import BCOW_HELPER_ABI
 from cow_amm_trade_envy.models import CoWAmmOrderData
 import json
 import pandas as pd
+import spice
+from tqdm import tqdm
+import polars as pl
+import duckdb
+from tenacity import retry, stop_after_attempt, wait_fixed
 from cow_amm_trade_envy.db_utils import upsert_data
 from cow_amm_trade_envy.constants import DB_FILE
+
 load_dotenv()
 
+
+QUERY_NR = 4448838
+INTERVAL_LENGTH = 10_000
+supported_networks = ["ethereum"]
 node_url = os.getenv("NODE_URL")
 w3 = Web3(Web3.HTTPProvider(node_url, request_kwargs={"timeout": 60}))
 
@@ -113,10 +122,80 @@ def get_logs(tx_hash: str):
             upsert_data("receipt_cache", df_insert, conn)
         return json.loads(logs)
 
-if __name__ == "__main__":
-    bcow_helper = BCoWHelper()
 
-    # Example usage
-    tx_hash = "0x5381141986041a1b42931e5e37bdab3cce7672a830914390c6da18a477ca930b"
-    logs = get_logs(tx_hash)
-    print(logs)
+def get_highest_block(network: str) -> int:
+    if network not in supported_networks:
+        raise ValueError(
+            f"Network {network} not supported. Supported networks are {supported_networks}"
+        )
+
+    highest_block = 20842716
+    return highest_block
+
+
+def get_last_block_ingested(network: str) -> int:
+    if network not in supported_networks:
+        raise ValueError(
+            f"Network {network} not supported. Supported networks are {supported_networks}"
+        )
+
+    final_block_ingested = 20842476
+    return final_block_ingested
+
+
+def split_intervals(beginning_block: int, current_block: int, interval_len: int) -> list:
+    splits = []
+    for start in range(beginning_block, current_block + 1, interval_len):
+        end = min(start + interval_len - 1, current_block)
+        splits.append((start, end))
+    return splits
+
+@retry(stop=stop_after_attempt(5), wait=wait_fixed(2))
+def query_settle_data(network: str, left: int, right: int) -> pl.DataFrame:
+    df = spice.query(QUERY_NR, parameters={"start_block": left, "end_block": right,
+                                           "network": network})
+    return df
+
+
+def populate_settlement_table(network: str):
+
+    current_block = get_highest_block(network)
+    beginning_block = get_last_block_ingested(network) + 1
+    splits = split_intervals(beginning_block, current_block, INTERVAL_LENGTH)
+
+    dfs = []
+    for left, right in tqdm(splits):
+        print(f"Fetching {left} to {right}")
+        df = query_settle_data(network, left, right)
+        dfs.append(df)
+
+    df = pl.concat(dfs)
+    df = df.to_pandas()
+    df["gas_price"] = df["gas_price"].astype(int)
+
+    table_name = f"{network}_settle"
+
+    create_table_query = f"""
+    CREATE TABLE IF NOT EXISTS {table_name} (
+        call_tx_hash TEXT PRIMARY KEY,
+        contract_address TEXT,
+        call_success BOOLEAN,
+        call_trace_address TEXT,
+        call_block_time TIMESTAMP,
+        call_block_number INTEGER,
+        tokens TEXT,
+        clearingPrices TEXT,
+        trades TEXT,
+        interactions TEXT,
+        gas_price BIGINT
+    );
+    """
+
+    with duckdb.connect(database=DB_FILE) as conn:
+        conn.execute(create_table_query)
+        upsert_data(table_name, df, conn)
+
+
+if __name__ == "__main__":
+    network_in_use = "ethereum"
+    populate_settlement_table(network_in_use)
