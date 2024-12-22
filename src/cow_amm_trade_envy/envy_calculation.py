@@ -8,8 +8,6 @@ from cow_amm_trade_envy.db_utils import upsert_data
 from cow_amm_trade_envy.constants import DB_FILE
 import duckdb
 
-# todo dockerize
-
 helper = BCoWHelper()
 
 
