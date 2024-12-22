@@ -4,16 +4,13 @@ from tqdm import tqdm
 from cow_amm_trade_envy.models import UCP, Pools, SettlementTrades, Trade
 from cow_amm_trade_envy.datasources import BCoWHelper
 from typing import Optional
-import sqlite3
+from cow_amm_trade_envy.db_utils import upsert_data
+from cow_amm_trade_envy.constants import DB_FILE
+import duckdb
 
 # todo dockerize
 
 helper = BCoWHelper()
-
-
-DB_FILE = "data.db"
-conn = sqlite3.connect(DB_FILE)
-cursor = conn.cursor()
 
 
 def preprocess_row(row: pd.Series) -> pd.Series:
@@ -92,9 +89,10 @@ def calc_envy_per_settlement(row):
     return {"trade_envy": None, "pool": None}
 
 
-def create_envy_data(network: str, outfile: str):
+def create_envy_data(network: str):
     # load table
-    ucp_data = pd.read_sql_query(f"SELECT * FROM {network}_settle", conn)
+    with duckdb.connect(database=DB_FILE) as conn:
+        ucp_data = conn.execute(f"SELECT * FROM {network}_settle").fetchdf()
 
     ucp_data = ucp_data.sort_values("call_block_number", ascending=False)
     ucp_data.reset_index(drop=True, inplace=True)
@@ -105,11 +103,31 @@ def create_envy_data(network: str, outfile: str):
     ucp_data["trade_envy"] = [x["trade_envy"] for x in trade_envy_per_settlement]
     ucp_data["pool"] = [x["pool"] for x in trade_envy_per_settlement]
 
-    ucp_data.to_csv(outfile)
+    envy_data = pd.DataFrame(
+        {
+            "call_tx_hash": ucp_data["call_tx_hash"],
+            "trade_envy": [x["trade_envy"] for x in trade_envy_per_settlement],
+            "pool": [x["pool"] for x in trade_envy_per_settlement],
+        }
+    )
+
+    query_recreate_table = f"""
+    DROP TABLE IF EXISTS {network}_envy;
+    CREATE TABLE {network}_envy (
+        call_tx_hash BLOB PRIMARY KEY,
+        trade_envy NUMERIC,
+        pool TEXT
+    );
+    """
+    with duckdb.connect(database=DB_FILE) as conn:
+        conn.execute(query_recreate_table)
+        upsert_data(f"{network}_envy", envy_data, conn)
+
+
+    outfile = "data/cow_amm_missed_surplus.csv"
+    ucp_data.to_csv(outfile) # keep this for now to see changes in the diffs
 
 
 if __name__ == "__main__":
-    outfile = "data/cow_amm_missed_surplus.csv"
-
     network = "ethereum"
-    create_envy_data(network, outfile)
+    create_envy_data(network)

@@ -2,8 +2,10 @@ import spice
 import dotenv
 from tqdm import tqdm
 import polars as pl
-import sqlite3
+import duckdb
 from tenacity import retry, stop_after_attempt, wait_fixed
+from cow_amm_trade_envy.db_utils import upsert_data
+from cow_amm_trade_envy.constants import DB_FILE
 
 dotenv.load_dotenv()
 
@@ -13,7 +15,7 @@ interval = 10_000
 dfs = []
 supported_networks = ["ethereum"]
 
-network = "ethereum"  # todo make this adjustable
+network = "ethereum"  # TODO: Make this adjustable
 
 
 def get_highest_block(network: str) -> int:
@@ -62,17 +64,18 @@ for left, right in tqdm(splits):
     df = query_settle_data(query_nr, left, right)
     dfs.append(df)
 
-
+# Combine all DataFrames
 df = pl.concat(dfs)
+# cast gas price to int
+df = df.to_pandas()
+df["gas_price"] = df["gas_price"].astype(int)
 
-DB_FILE = "data.db"
-conn = sqlite3.connect(DB_FILE)
-cursor = conn.cursor()
+table_name = f"{network}_settle"
 
 create_table_query = f"""
-CREATE TABLE IF NOT EXISTS {network}_settle (
-    call_tx_hash BLOB PRIMARY KEY,
-    contract_address BLOB,
+CREATE TABLE IF NOT EXISTS {table_name} (
+    call_tx_hash TEXT PRIMARY KEY,
+    contract_address TEXT,
     call_success BOOLEAN,
     call_trace_address TEXT,
     call_block_time TIMESTAMP,
@@ -81,41 +84,9 @@ CREATE TABLE IF NOT EXISTS {network}_settle (
     clearingPrices TEXT,
     trades TEXT,
     interactions TEXT,
-    gas_price INTEGER
+    gas_price BIGINT
 );
 """
-
-upsert_query = f"""
-INSERT OR REPLACE INTO {network}_settle (
-    call_tx_hash,
-    contract_address,
-    call_success,
-    call_trace_address,
-    call_block_time,
-    call_block_number,
-    tokens,
-    clearingPrices,
-    trades,
-    interactions,
-    gas_price
-)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-"""
-
-# make sure data to insert has the right column order
-cursor.execute(create_table_query)
-conn.commit()
-
-columns = conn.execute(f"PRAGMA table_info({network}_settle)").fetchall()
-columns = [col[1] for col in columns]
-
-df = df.select(columns)
-
-cursor.executemany(
-    upsert_query,
-    df.to_pandas().values,
-)
-
-conn.commit()
-
-conn.close()
+with duckdb.connect(database=DB_FILE) as conn:
+    conn.execute(create_table_query)
+    upsert_data(table_name, df, conn)
