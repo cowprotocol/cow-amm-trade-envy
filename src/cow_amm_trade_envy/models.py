@@ -54,6 +54,7 @@ class Tokens:
     tokens = [USDC, WETH, BAL, UNI, COW, wstETH, DOG]
     native = WETH
 
+
 @dataclass(frozen=True)
 class BCowPool:
     NAME: str

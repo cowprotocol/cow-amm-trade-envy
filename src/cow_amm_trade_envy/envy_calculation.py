@@ -21,7 +21,9 @@ def preprocess_row(row: pd.Series) -> pd.Series:
     return row
 
 
-def calc_surplus_per_trade(ucp: UCP, trade: Trade, block_num: int, network:str) -> Optional[dict]:
+def calc_surplus_per_trade(
+    ucp: UCP, trade: Trade, block_num: int, network: str
+) -> Optional[dict]:
     pool = Pools().get_fitting_pool(trade)
     order = helper.order(
         pool=pool,
@@ -56,14 +58,20 @@ def calc_surplus_per_trade(ucp: UCP, trade: Trade, block_num: int, network:str) 
     executed_buy_amount = (
         max_cow_amm_buy_amount * ucp[selling_token] / ucp[buying_token]
     )
-    surplus = max_cow_amm_sell_amount - executed_buy_amount # denominated in buying token
+    surplus = (
+        max_cow_amm_sell_amount - executed_buy_amount
+    )  # denominated in buying token
 
-    if trade.isOneToZero(pool): # make sure its denominated in token1 of the pool
+    if trade.isOneToZero(pool):  # make sure its denominated in token1 of the pool
         surplus = surplus * ucp[pool.TOKEN0] / ucp[pool.TOKEN1]
 
     if buying_token != Tokens.native:
-        rate_in_wrapped_native = get_token_to_native_rate(network, pool.TOKEN1.address, block_num)
-        decimal_correction_factor = 10**(Tokens.native.decimals - pool.TOKEN1.decimals)
+        rate_in_wrapped_native = get_token_to_native_rate(
+            network, pool.TOKEN1.address, block_num
+        )
+        decimal_correction_factor = 10 ** (
+            Tokens.native.decimals - pool.TOKEN1.decimals
+        )
         surplus = surplus * rate_in_wrapped_native * decimal_correction_factor
 
     return {"surplus": surplus, "pool": pool.ADDRESS}
@@ -84,12 +92,14 @@ def calc_envy_per_settlement(row, network: str):
 
     envy_list = []
     for trade in eligible_settlement_trades:
-        surplus_data = calc_surplus_per_trade(ucp, trade, row["call_block_number"], network)
+        surplus_data = calc_surplus_per_trade(
+            ucp, trade, row["call_block_number"], network
+        )
         if surplus_data:
             surplus = surplus_data["surplus"]
             pool = surplus_data["pool"]
             gas = calc_gas(row["gas_price"])
-            trade_envy = (surplus - gas) * 10**(-Tokens.native.decimals)
+            trade_envy = (surplus - gas) * 10 ** (-Tokens.native.decimals)
             envy_list.append({"trade_envy": trade_envy, "pool": pool})
 
     return envy_list
