@@ -23,7 +23,7 @@ def preprocess_row(row: pd.Series) -> pd.Series:
 def calc_surplus_per_trade(ucp: UCP, trade: Trade, block_num) -> Optional[dict]:
     pool = Pools().get_fitting_pool(trade)
     order = helper.order(
-        pool=pool.checksum(),
+        pool=pool,
         prices=[ucp[pool.TOKEN0], ucp[pool.TOKEN1]],
         block_num=block_num,
     )
@@ -75,7 +75,7 @@ def calc_envy_per_settlement(row):
     ucp = UCP.from_lists(row["tokens"], row["clearingPrices"])
 
     eligible_settlement_trades = SettlementTrades.eligible_trades_from_lists(
-        row["tokens"], row["clearingPrices"], row["trades"]
+        row["tokens"], row["clearingPrices"], row["trades"], row["call_block_number"]
     )
 
     envy_list = []

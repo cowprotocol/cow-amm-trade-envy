@@ -43,9 +43,17 @@ class BCowPool:
     ADDRESS: str
     TOKEN0: Token
     TOKEN1: Token
+    creation_block: int
 
-    def checksum(self) -> str:
+    @property
+    def checksum_address(self) -> str:
         return w3.to_checksum_address(self.ADDRESS)
+
+    @property
+    def first_block_active(self) -> int:
+        return self.creation_block + 1
+
+    __str__ = lambda self: self.checksum_address
 
 
 @dataclass(frozen=True)
@@ -56,17 +64,22 @@ class Pools:
             "0xf08d4dea369c456d26a3168ff0024b904f2d8b91",
             Tokens.USDC,
             Tokens.WETH,
+            20476566,
         ),
         BCowPool(
             "BAL-WETH",
             "0xf8f5b88328dff3d19e5f4f11a9700293ac8f638f",
             Tokens.BAL,
             Tokens.WETH,
+            20479347,
         ),
-        #    BCowPool( # todo find out why helper function call reverts
-        #    "WETH-UNI",
-        #    "0xa81b22966f1841e383e69393175e2cc65f0a8854", Tokens.WETH, Tokens.UNI,
-        # )
+        BCowPool(
+            "WETH-UNI",
+            "0xa81b22966f1841e383e69393175e2cc65f0a8854",
+            Tokens.WETH,
+            Tokens.UNI,
+            21105545,
+        ),
     ]
 
     def get_pools(self) -> List[BCowPool]:
@@ -104,9 +117,16 @@ class Pools:
         lookup = self.get_pool_lookup()
         return (buy_token, sell_token) in lookup or (sell_token, buy_token) in lookup
 
+    def __getitem__(self, key: Tuple[str, str]) -> BCowPool:
+        lookup = self.get_pool_lookup()
+        if key in lookup:
+            return lookup[key]
+        elif (key[1], key[0]) in lookup:
+            return lookup[(key[1], key[0])]
+        else:
+            raise KeyError("Pool not found")
 
 addr_to_token = Pools().get_token_lookup()
-SUPPORTED_POOLS = Pools().get_supported_pools()
 
 
 @dataclass(frozen=True)
@@ -185,7 +205,7 @@ class SettlementTrades:
 
     @classmethod
     def eligible_trades_from_lists(
-        cls, tokens: list, prices: list, trades: list
+        cls, tokens: list, prices: list, trades: list, block_num: int
     ) -> "SettlementTrades":
         trades_processed = []
         for trade in trades:
@@ -199,6 +219,11 @@ class SettlementTrades:
             is_supported = Pools().pair_is_supported(buy_token, sell_token)
             if not is_supported:
                 continue
+
+            pool = Pools()[(buy_token, sell_token)]
+            if block_num < pool.first_block_active: # trade before pool creation
+                continue
+
 
             trades_processed.append(
                 Trade(

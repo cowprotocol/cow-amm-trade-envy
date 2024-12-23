@@ -26,7 +26,6 @@ make dagster-run
 
 - query more dune data for a larger test
 - query price data for underfilled CoWs
-- find out why some pools dont allow calling of the helper function
 - add more pools
 - price conversion for non-eth pools
 - more insights in the dashboard

@@ -4,7 +4,7 @@ from web3 import Web3
 from web3.types import HexBytes
 from web3.datastructures import AttributeDict
 from cow_amm_trade_envy.constants import BCOW_HELPER_ABI
-from cow_amm_trade_envy.models import CoWAmmOrderData
+from cow_amm_trade_envy.models import CoWAmmOrderData, BCowPool
 import json
 import pandas as pd
 import spice
@@ -55,15 +55,17 @@ def json_serializer(obj):
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 
-def query(pool: str, prices: list, block_num: int, contract) -> list:
+def query(pool: BCowPool, prices: list, block_num: int, contract) -> list:
     """Fetch data from blockchain."""
-    fun = contract.functions.order(pool, prices)
+    fun = contract.functions.order(pool.checksum_address, prices)
     response = fun.call(block_identifier=block_num)
     order, preInteractions, postInteractions, sig = response
     return json_serializer(order)
 
 
-def fetch_from_cache_or_query(pool: str, prices: list, block_num: int | None, contract):
+def fetch_from_cache_or_query(
+    pool: BCowPool, prices: list, block_num: int | None, contract
+):
     """Fetch data from DuckDB cache or query the blockchain."""
     cache_key = f"{pool}_{prices}_{block_num}"
 
@@ -94,7 +96,7 @@ class BCoWHelper:
         self.contract = w3.eth.contract(address=self.address, abi=self.abi)
 
     def order(
-        self, pool: str, prices: list, block_num: int | None = None
+        self, pool: BCowPool, prices: list, block_num: int | None = None
     ) -> CoWAmmOrderData:
         order = fetch_from_cache_or_query(pool, prices, block_num, self.contract)
         return CoWAmmOrderData.from_order_response(order)
