@@ -18,7 +18,7 @@ from cow_amm_trade_envy.constants import DB_FILE
 load_dotenv()
 
 backoff_blocks = {
-    "ethereum": 1800 # dune price data is ingested hourly, for good measure 6h backoff
+    "ethereum": 1800  # dune price data is ingested hourly, for good measure 6h backoff
 }
 
 
@@ -139,8 +139,9 @@ def get_highest_block(network: str) -> int:
     return highest_block
 
 
-def get_last_block_ingested(conn: duckdb.DuckDBPyConnection, table_name: str,
-                            block_col_name: str) -> int:
+def get_last_block_ingested(
+    conn: duckdb.DuckDBPyConnection, table_name: str, block_col_name: str
+) -> int:
     res = conn.query(f"SELECT MAX({block_col_name}) FROM {table_name}")
     final_block_ingested = res.fetchdf().iloc[0, 0]
     if pd.isna(final_block_ingested):
@@ -166,6 +167,7 @@ def query_dune_data(query_nr: int, parameters: dict) -> pl.DataFrame:
     df = spice.query(query_nr, parameters=parameters)
     return df
 
+
 def populate_settlement_table(network: str):
     table_name = f"{network}_settle"
 
@@ -189,14 +191,15 @@ def populate_settlement_table(network: str):
     with duckdb.connect(database=DB_FILE) as conn:
         conn.execute(create_table_query)
         current_block = get_highest_block(network)
-        beginning_block = get_last_block_ingested(conn, table_name, "call_block_number") + 1
+        beginning_block = (
+            get_last_block_ingested(conn, table_name, "call_block_number") + 1
+        )
 
     if beginning_block > current_block:
         return
 
     splits = split_intervals(beginning_block, current_block, INTERVAL_LENGTH_SETTLE)
     dfs = []
-
 
     for left, right in tqdm(splits):
         print(f"Fetching {left} to {right}")
@@ -227,7 +230,6 @@ def populate_price_table(network: str, token_address: str):
         current_block = get_highest_block(network)
         beginning_block = get_last_block_ingested(conn, table_name, "block_number") + 1
 
-
     if beginning_block > current_block:
         return
 
@@ -236,8 +238,12 @@ def populate_price_table(network: str, token_address: str):
 
     for left, right in tqdm(splits):
         print(f"Fetching {left} to {right}")
-        params = {"contract_address": token_address, "network": network,
-                    "start_block": left, "end_block": right}
+        params = {
+            "contract_address": token_address,
+            "network": network,
+            "start_block": left,
+            "end_block": right,
+        }
         df = query_dune_data(QUERY_NR_PRICE, params)
 
         dfs.append(df)
@@ -248,13 +254,13 @@ def populate_price_table(network: str, token_address: str):
     with duckdb.connect(database=DB_FILE) as conn:
         upsert_data(table_name, df, conn)
 
+
 def populate_price_tables(network: str):
     for token in tqdm(Tokens.tokens):
         populate_price_table(network, token.address)
 
 
 if __name__ == "__main__":
-
     network_in_use = "ethereum"
     populate_settlement_table(network_in_use)
     populate_price_tables(network_in_use)
