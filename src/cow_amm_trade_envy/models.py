@@ -35,6 +35,21 @@ class Tokens:
         address="0x1f9840a85d5af5bf1d1762f925bdaddc4201f984".lower(),
         decimals=18,
     )
+    COW = Token(
+        name="COW",
+        address="0xdef1ca1fb7fbcdc777520aa7f396b4e015f497ab".lower(),
+        decimals=18,
+    )
+    wstETH = Token(
+        name="wstETH",
+        address="0x7f39c581f595b53c5cb19bd0b3f8da6c935e2ca0".lower(),
+        decimals=18,
+    )
+    DOG = Token(
+        name="DOG",
+        address="0xbaac2b4491727d78d2b78815144570b9f2fe8899".lower(),
+        decimals=18,
+    )
 
 
 @dataclass(frozen=True)
@@ -79,6 +94,20 @@ class Pools:
             Tokens.WETH,
             Tokens.UNI,
             21105545,
+        ),
+        BCowPool(
+            "COW-wstETH",
+            "0x9bd702e05b9c97e4a4a3e47df1e0fe7a0c26d2f1",
+            Tokens.COW,
+            Tokens.wstETH,
+            20522025,
+        ),
+        BCowPool(
+            "wstETH-DOG",
+            "0x9d0e8cdf137976e03ef92ede4c30648d05e25285",
+            Tokens.wstETH,
+            Tokens.DOG,
+            20587725,
         ),
     ]
 
