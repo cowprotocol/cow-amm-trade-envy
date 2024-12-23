@@ -122,7 +122,7 @@ def create_envy_data(network: str):
 
     query_recreate_table = f"""
     CREATE TABLE IF NOT EXISTS {network}_envy (
-    call_tx_hash BLOB,
+    call_tx_hash TEXT,
     pool TEXT,
     trade_envy NUMERIC,
     PRIMARY KEY (call_tx_hash, pool)
