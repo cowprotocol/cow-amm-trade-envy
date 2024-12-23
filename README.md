@@ -25,6 +25,7 @@ make dagster-run
 
 
 - query more dune data for a larger test
+- Todo is it safe enough to assume the sender of the settlement is the solver or do I have to check that in the logs? (Settlement)
 - query price data for underfilled CoWs
 - add more pools
 - price conversion for non-eth pools

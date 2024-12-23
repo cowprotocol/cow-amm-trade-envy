@@ -167,22 +167,6 @@ def query_settle_data(network: str, left: int, right: int) -> pl.DataFrame:
 def populate_settlement_table(network: str):
     table_name = f"{network}_settle"
 
-    with duckdb.connect(database=DB_FILE) as conn:
-        current_block = get_highest_block(network)
-        beginning_block = get_last_block_ingested(conn, table_name) + 1
-
-    splits = split_intervals(beginning_block, current_block, INTERVAL_LENGTH)
-
-    dfs = []
-    for left, right in tqdm(splits):
-        print(f"Fetching {left} to {right}")
-        df = query_settle_data(network, left, right)
-        dfs.append(df)
-
-    df = pl.concat(dfs)
-    df = df.to_pandas()
-    df["gas_price"] = df["gas_price"].astype(int)
-
     create_table_query = f"""
     CREATE TABLE IF NOT EXISTS {table_name} (
         call_tx_hash TEXT PRIMARY KEY,
@@ -195,12 +179,29 @@ def populate_settlement_table(network: str):
         clearingPrices TEXT,
         trades TEXT,
         interactions TEXT,
-        gas_price BIGINT
+        gas_price BIGINT,
+        solver TEXT,
     );
     """
 
     with duckdb.connect(database=DB_FILE) as conn:
         conn.execute(create_table_query)
+        current_block = get_highest_block(network)
+        beginning_block = get_last_block_ingested(conn, table_name) + 1
+
+    splits = split_intervals(beginning_block, current_block, INTERVAL_LENGTH)
+    dfs = []
+
+    for left, right in tqdm(splits):
+        print(f"Fetching {left} to {right}")
+        df = query_settle_data(network, left, right)
+        dfs.append(df)
+
+    df = pl.concat(dfs)
+    df = df.to_pandas()
+    df["gas_price"] = df["gas_price"].astype(int)
+
+    with duckdb.connect(database=DB_FILE) as conn:
         upsert_data(table_name, df, conn)
 
 

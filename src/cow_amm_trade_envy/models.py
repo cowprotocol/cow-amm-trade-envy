@@ -155,6 +155,7 @@ class Pools:
         else:
             raise KeyError("Pool not found")
 
+
 addr_to_token = Pools().get_token_lookup()
 
 
@@ -250,9 +251,8 @@ class SettlementTrades:
                 continue
 
             pool = Pools()[(buy_token, sell_token)]
-            if block_num < pool.first_block_active: # trade before pool creation
+            if block_num < pool.first_block_active:  # trade before pool creation
                 continue
-
 
             trades_processed.append(
                 Trade(
