@@ -1,12 +1,13 @@
 import json
 import pandas as pd
 from tqdm import tqdm
-from cow_amm_trade_envy.models import UCP, Pools, SettlementTrades, Trade
+from cow_amm_trade_envy.models import UCP, Pools, Tokens, SettlementTrades, Trade
 from cow_amm_trade_envy.datasources import BCoWHelper
 from typing import Optional
 from cow_amm_trade_envy.db_utils import upsert_data
 from cow_amm_trade_envy.constants import DB_FILE
 import duckdb
+from cow_amm_trade_envy.datasources import get_token_to_native_rate
 
 helper = BCoWHelper()
 
@@ -20,7 +21,7 @@ def preprocess_row(row: pd.Series) -> pd.Series:
     return row
 
 
-def calc_surplus_per_trade(ucp: UCP, trade: Trade, block_num) -> Optional[dict]:
+def calc_surplus_per_trade(ucp: UCP, trade: Trade, block_num: int, network:str) -> Optional[dict]:
     pool = Pools().get_fitting_pool(trade)
     order = helper.order(
         pool=pool,
@@ -55,13 +56,16 @@ def calc_surplus_per_trade(ucp: UCP, trade: Trade, block_num) -> Optional[dict]:
     executed_buy_amount = (
         max_cow_amm_buy_amount * ucp[selling_token] / ucp[buying_token]
     )
-    surplus = max_cow_amm_sell_amount - executed_buy_amount
+    surplus = max_cow_amm_sell_amount - executed_buy_amount # denominated in buying token
 
-    if trade.isOneToZero(pool):
-        surplus = surplus * ucp[selling_token] / ucp[buying_token]
-    # if buying_token != Tokens.WETH:
-    #    # todo need an ETH pricelookup for more general pools
-    #    pass
+    if trade.isOneToZero(pool): # make sure its denominated in token1 of the pool
+        surplus = surplus * ucp[pool.TOKEN0] / ucp[pool.TOKEN1]
+
+    if buying_token != Tokens.native:
+        rate_in_wrapped_native = get_token_to_native_rate(network, pool.TOKEN1.address, block_num)
+        decimal_correction_factor = 10**(Tokens.native.decimals - pool.TOKEN1.decimals)
+        surplus = surplus * rate_in_wrapped_native * decimal_correction_factor
+
     return {"surplus": surplus, "pool": pool.ADDRESS}
 
 
@@ -69,7 +73,7 @@ def calc_gas(gas_price: int):
     return gas_price * 100_000
 
 
-def calc_envy_per_settlement(row):
+def calc_envy_per_settlement(row, network: str):
     row = preprocess_row(row)
 
     ucp = UCP.from_lists(row["tokens"], row["clearingPrices"])
@@ -80,12 +84,12 @@ def calc_envy_per_settlement(row):
 
     envy_list = []
     for trade in eligible_settlement_trades:
-        surplus_data = calc_surplus_per_trade(ucp, trade, row["call_block_number"])
+        surplus_data = calc_surplus_per_trade(ucp, trade, row["call_block_number"], network)
         if surplus_data:
             surplus = surplus_data["surplus"]
             pool = surplus_data["pool"]
             gas = calc_gas(row["gas_price"])
-            trade_envy = (surplus - gas) * 1e-18  # convert to ETH
+            trade_envy = (surplus - gas) * 10**(-Tokens.native.decimals)
             envy_list.append({"trade_envy": trade_envy, "pool": pool})
 
     return envy_list
@@ -100,7 +104,7 @@ def create_envy_data(network: str):
     ucp_data.reset_index(drop=True, inplace=True)
 
     trade_envy_per_settlement = [
-        calc_envy_per_settlement(row) for _, row in tqdm(ucp_data.iterrows())
+        calc_envy_per_settlement(row, network) for _, row in tqdm(ucp_data.iterrows())
     ]
 
     df_te = pd.DataFrame({"data": trade_envy_per_settlement})

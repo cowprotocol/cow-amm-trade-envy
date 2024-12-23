@@ -254,6 +254,26 @@ def populate_price_table(network: str, token_address: str):
     with duckdb.connect(database=DB_FILE) as conn:
         upsert_data(table_name, df, conn)
 
+def get_token_to_native_rate(network: str, token_address: str, block_number: int) -> float | None:
+    table_name = f"{network}_{token_address}_price"
+    native = Tokens.native.address
+
+    with duckdb.connect(database=DB_FILE) as conn:
+        res = conn.query(f"SELECT price FROM {table_name} WHERE block_number <= {block_number} ORDER BY block_number DESC LIMIT 1").fetchone()
+        native_price_res = conn.query(f"SELECT price FROM {network}_{native}_price WHERE block_number <= {block_number} ORDER BY block_number DESC LIMIT 1").fetchone()
+
+    if res is None or native_price_res is None:
+        return None
+
+    price = float(res[0]) # usd/token
+    native_price = float(native_price_res[0]) # usd/native
+
+    # native/token = usd/token  * 1/(native/usd)
+    token_to_native_rate = price / native_price
+
+    return token_to_native_rate
+
+
 
 def populate_price_tables(network: str):
     for token in tqdm(Tokens.tokens):
