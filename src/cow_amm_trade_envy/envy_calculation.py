@@ -59,9 +59,9 @@ def calc_surplus_per_trade(ucp: UCP, trade: Trade, block_num) -> Optional[dict]:
 
     if trade.isOneToZero(pool):
         surplus = surplus * ucp[selling_token] / ucp[buying_token]
-        # if buying_token != Tokens.WETH:
-        #    # todo need an ETH pricelookup for more general pools
-        #    pass
+    # if buying_token != Tokens.WETH:
+    #    # todo need an ETH pricelookup for more general pools
+    #    pass
     return {"surplus": surplus, "pool": pool.ADDRESS}
 
 

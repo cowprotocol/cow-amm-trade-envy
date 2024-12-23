@@ -15,6 +15,7 @@ class Token:
 
 @dataclass(frozen=True)
 class Tokens:
+
     USDC = Token(
         name="USDC",
         address="0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48".lower(),
@@ -51,6 +52,7 @@ class Tokens:
         decimals=18,
     )
 
+    tokens = [USDC, WETH, BAL, UNI, COW, wstETH, DOG]
 
 @dataclass(frozen=True)
 class BCowPool:
