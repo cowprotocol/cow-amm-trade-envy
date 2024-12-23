@@ -158,6 +158,11 @@ class Pools:
         else:
             raise KeyError("Pool not found")
 
+    def get_name_from_address(self, address: str) -> str:
+        for pool in self.get_pools():
+            if pool.ADDRESS == address:
+                return pool.NAME
+        raise ValueError("Pool not found")
 
 addr_to_token = Pools().get_token_lookup()
 
