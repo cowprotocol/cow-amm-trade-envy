@@ -3,7 +3,10 @@ from dotenv import load_dotenv
 from web3 import Web3
 from web3.types import HexBytes
 from web3.datastructures import AttributeDict
-from cow_amm_trade_envy.constants import BCOW_HELPER_ABI
+from cow_amm_trade_envy.constants import (
+    BCOW_FULL_COW_HELPER_ABI,
+    BCOW_PARTIAL_COW_HELPER_ABI,
+)
 from cow_amm_trade_envy.models import CoWAmmOrderData, BCowPool, Tokens
 import json
 import pandas as pd
@@ -61,72 +64,81 @@ def json_serializer(obj):
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 
-def query(pool: BCowPool, prices: list, block_num: int, contract) -> list:
-    """Fetch data from blockchain."""
-    fun = contract.functions.order(pool.checksum_address, prices)
+def query_contract(
+    contract_function, pool: BCowPool, params: dict, block_num: int
+) -> list:
+    fun = contract_function(pool.checksum_address, **params)
     response = fun.call(block_identifier=block_num)
-    order, preInteractions, postInteractions, sig = response
-    return json_serializer(order)
-
-
-def fetch_from_cache_or_query(
-    pool: BCowPool, prices: list, block_num: int | None, contract
-):
-    """Fetch data from DuckDB cache or query the blockchain."""
-    cache_key = f"{pool}_{prices}_{block_num}"
-
-    with duckdb.connect(database=DB_FILE) as conn:
-        result = conn.execute(
-            f"SELECT response FROM order_cache WHERE key = '{cache_key}'"
-        ).fetchone()
-
-    if result:
-        return json.loads(result[0])
-    else:
-        order_data = query(pool, prices, block_num, contract)
-        df_insert = pd.DataFrame(
-            {"key": [cache_key], "response": [json.dumps(order_data)]}
-        )
-        with duckdb.connect(database=DB_FILE) as conn:
-            # doesnt need to be upsert but shouldnt hurt
-            upsert_data("order_cache", df_insert, conn)
-        return order_data
+    return json_serializer(response)
 
 
 class BCoWHelper:
-    """Helper class for interacting with the blockchain contract."""
 
-    def __init__(self):
-        self.address = "0x3FF0041A614A9E6Bf392cbB961C97DA214E9CB31"  # todo different on other chains
-        self.abi = BCOW_HELPER_ABI
-        self.contract = w3.eth.contract(address=self.address, abi=self.abi)
+    def __init__(self, network: str):
+        self.network = network
 
-    def order(
-        self, pool: BCowPool, prices: list, block_num: int | None = None
-    ) -> CoWAmmOrderData:
-        order = fetch_from_cache_or_query(pool, prices, block_num, self.contract)
+        # Full cow contract setup
+        self.address_full_cow = "0x3FF0041A614A9E6Bf392cbB961C97DA214E9CB31"  # Adjust for other chains as needed
+        self.abi_full_cow = BCOW_FULL_COW_HELPER_ABI
+        self.contract_full_cow = w3.eth.contract(
+            address=self.address_full_cow, abi=self.abi_full_cow
+        )
+
+        # Partial cow contract setup
+        self.address_partial_cow = w3.to_checksum_address(
+            "0x03362f847b4fabc12e1ce98b6b59f94401e4588e"
+        )  # Adjust as needed
+        self.abi_partial_cow = BCOW_PARTIAL_COW_HELPER_ABI
+        self.contract_partial_cow = w3.eth.contract(
+            address=self.address_partial_cow, abi=self.abi_partial_cow
+        )
+
+    def order(self, pool: BCowPool, prices: list, block_num: int) -> CoWAmmOrderData:
+        contract_function = self.contract_full_cow.functions.order
+        response = self.fetch_from_cache_or_query(
+            contract_function, pool, {"prices": prices}, block_num
+        )
+        order, preInteractions, postInteractions, sig = response
         return CoWAmmOrderData.from_order_response(order)
 
+    def order_from_buy_amount(
+        self, pool: BCowPool, order_token: str, buy_amount: int, block_num: int
+    ) -> dict:
+        contract_function = self.contract_partial_cow.functions.orderFromBuyAmount
+        params = {"buyAmount": buy_amount, "buyToken": order_token}
+        return self.fetch_from_cache_or_query(
+            contract_function, pool, params, block_num
+        )
 
-def get_logs(tx_hash: str):
-    """Fetch logs from DuckDB cache or blockchain."""
-    cache_key = tx_hash
+    def order_from_sell_amount(
+        self, pool: BCowPool, sell_token: str, sell_amount: int, block_num: int
+    ) -> dict:
+        contract_function = self.contract_partial_cow.functions.orderFromSellAmount
+        params = {"sellAmount": sell_amount, "sellToken": sell_token}
+        return self.fetch_from_cache_or_query(
+            contract_function, pool, params, block_num
+        )
 
-    with duckdb.connect(database=DB_FILE) as conn:
-        result = conn.execute(
-            f"SELECT response FROM receipt_cache WHERE key = '{cache_key}'"
-        ).fetchone()
+    def fetch_from_cache_or_query(
+        self, contract_function, pool: BCowPool, params: dict, block_num: int
+    ):
+        cache_key = f"{self.network}_{contract_function.address}_{contract_function.abi_element_identifier}_{pool}_{json.dumps(params)}_{block_num}"
 
-    if result:
-        return json.loads(result[0])
-    else:
-        receipt = w3.eth.get_transaction_receipt(tx_hash)
-        logs = json.dumps(receipt["logs"], default=json_serializer)
-        df_insert = pd.DataFrame({"key": [cache_key], "response": [logs]})
         with duckdb.connect(database=DB_FILE) as conn:
-            # doesnt need to be upsert but shouldnt hurt
-            upsert_data("receipt_cache", df_insert, conn)
-        return json.loads(logs)
+            result = conn.execute(
+                f"SELECT response FROM order_cache WHERE key = ?", (cache_key,)
+            ).fetchone()
+
+        if result:
+            return json.loads(result[0])
+        else:
+            response = query_contract(contract_function, pool, params, block_num)
+            df_insert = pd.DataFrame(
+                {"key": [cache_key], "response": [json.dumps(response)]}
+            )
+            with duckdb.connect(database=DB_FILE) as conn:
+                upsert_data("order_cache", df_insert, conn)
+            return response
 
 
 def get_highest_block(network: str) -> int:

@@ -9,7 +9,8 @@ from cow_amm_trade_envy.constants import DB_FILE
 import duckdb
 from cow_amm_trade_envy.datasources import get_token_to_native_rate
 
-helper = BCoWHelper()
+network = "ethereum"
+helper = BCoWHelper(network)
 
 
 def preprocess_row(row: pd.Series) -> pd.Series:
@@ -153,5 +154,4 @@ def create_envy_data(network: str):
 
 
 if __name__ == "__main__":
-    network = "ethereum"
     create_envy_data(network)

@@ -13,5 +13,8 @@ dagster-run:
 report-render:
 	uv run src/cow_amm_trade_envy/render_report.py
 
+dune-query:
+	uv run src/cow_amm_trade_envy/datasources.py
+
 calc:
 	uv run src/cow_amm_trade_envy/envy_calculation.py
