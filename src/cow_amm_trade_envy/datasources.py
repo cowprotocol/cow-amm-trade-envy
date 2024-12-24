@@ -92,6 +92,7 @@ class BCoWHelper:
         self.contract_partial_cow = w3.eth.contract(
             address=self.address_partial_cow, abi=self.abi_partial_cow
         )
+        self.contract_partial_cow_deployment = 20963124
 
     def order(self, pool: BCowPool, prices: list, block_num: int) -> CoWAmmOrderData:
         contract_function = self.contract_full_cow.functions.order
@@ -102,22 +103,30 @@ class BCoWHelper:
         return CoWAmmOrderData.from_order_response(order)
 
     def order_from_buy_amount(
-        self, pool: BCowPool, order_token: str, buy_amount: int, block_num: int
-    ) -> dict:
+        self, pool: BCowPool, buy_token: str, buy_amount: int, block_num: int
+    ) -> CoWAmmOrderData | None:
+        if block_num <= self.contract_partial_cow_deployment:
+            return None
         contract_function = self.contract_partial_cow.functions.orderFromBuyAmount
-        params = {"buyAmount": buy_amount, "buyToken": order_token}
-        return self.fetch_from_cache_or_query(
+        params = {"buyAmount": buy_amount, "buyToken": w3.to_checksum_address(buy_token)}
+        response = self.fetch_from_cache_or_query(
             contract_function, pool, params, block_num
         )
+        order, _, _, _ = response
+        return CoWAmmOrderData.from_order_response(order)
 
     def order_from_sell_amount(
         self, pool: BCowPool, sell_token: str, sell_amount: int, block_num: int
-    ) -> dict:
+    ) -> CoWAmmOrderData | None:
+        if block_num <= self.contract_partial_cow_deployment:
+            return None
         contract_function = self.contract_partial_cow.functions.orderFromSellAmount
-        params = {"sellAmount": sell_amount, "sellToken": sell_token}
-        return self.fetch_from_cache_or_query(
+        params = {"sellAmount": sell_amount, "sellToken": w3.to_checksum_address(sell_token)}
+        response =  self.fetch_from_cache_or_query(
             contract_function, pool, params, block_num
         )
+        order, _, _, _ = response
+        return CoWAmmOrderData.from_order_response(order)
 
     def fetch_from_cache_or_query(
         self, contract_function, pool: BCowPool, params: dict, block_num: int

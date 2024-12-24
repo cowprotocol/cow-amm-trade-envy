@@ -40,14 +40,6 @@ def calc_surplus_per_trade(
     if not order_and_trade_aligned:
         return None
 
-    # actual calculation
-    cow_amm_buy_amount = order.buyAmount
-    max_cow_amm_buy_amount = min(trade.sellAmount, cow_amm_buy_amount)
-    # todo lookup price if CoW is not fully filled
-    max_cow_amm_sell_amount = (
-        order.sellAmount * max_cow_amm_buy_amount / cow_amm_buy_amount
-    )
-
     if trade.isOneToZero(pool):
         selling_token, buying_token = pool.TOKEN1, pool.TOKEN0
     elif trade.isZeroToOne(pool):
@@ -56,9 +48,31 @@ def calc_surplus_per_trade(
         #  shouldnt even happen when we only use eligible trades
         raise ValueError("Trade not supported")
 
+
+    # actual calculation
+    cow_amm_buy_amount = order.buyAmount
+    max_cow_amm_buy_amount = min(trade.sellAmount, cow_amm_buy_amount)
+
+    ratio_filled = max_cow_amm_buy_amount / cow_amm_buy_amount
+    if ratio_filled == 1:
+        max_cow_amm_sell_amount = order.sellAmount
+    else:
+
+        # from CoWAMMs perspective, the selling_token is bought
+        partial_order = helper.order_from_buy_amount(
+            pool, selling_token.address, max_cow_amm_buy_amount, block_num
+        )
+
+        # if the helper was not yet deployed, we can't get the partial order
+        if partial_order is None:
+            max_cow_amm_sell_amount = order.sellAmount * ratio_filled
+        else:
+            max_cow_amm_sell_amount = partial_order.sellAmount
+
     executed_buy_amount = (
         max_cow_amm_buy_amount * ucp[selling_token] / ucp[buying_token]
     )
+
     surplus = (
         max_cow_amm_sell_amount - executed_buy_amount
     )  # denominated in buying token
