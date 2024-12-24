@@ -48,7 +48,6 @@ def calc_surplus_per_trade(
         #  shouldnt even happen when we only use eligible trades
         raise ValueError("Trade not supported")
 
-
     # actual calculation
     cow_amm_buy_amount = order.buyAmount
     max_cow_amm_buy_amount = min(trade.sellAmount, cow_amm_buy_amount)
@@ -57,7 +56,6 @@ def calc_surplus_per_trade(
     if ratio_filled == 1:
         max_cow_amm_sell_amount = order.sellAmount
     else:
-
         # from CoWAMMs perspective, the selling_token is bought
         partial_order = helper.order_from_buy_amount(
             pool, selling_token.address, max_cow_amm_buy_amount, block_num

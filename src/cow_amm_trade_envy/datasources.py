@@ -73,7 +73,6 @@ def query_contract(
 
 
 class BCoWHelper:
-
     def __init__(self, network: str):
         self.network = network
 
@@ -108,7 +107,10 @@ class BCoWHelper:
         if block_num <= self.contract_partial_cow_deployment:
             return None
         contract_function = self.contract_partial_cow.functions.orderFromBuyAmount
-        params = {"buyAmount": buy_amount, "buyToken": w3.to_checksum_address(buy_token)}
+        params = {
+            "buyAmount": buy_amount,
+            "buyToken": w3.to_checksum_address(buy_token),
+        }
         response = self.fetch_from_cache_or_query(
             contract_function, pool, params, block_num
         )
@@ -121,8 +123,11 @@ class BCoWHelper:
         if block_num <= self.contract_partial_cow_deployment:
             return None
         contract_function = self.contract_partial_cow.functions.orderFromSellAmount
-        params = {"sellAmount": sell_amount, "sellToken": w3.to_checksum_address(sell_token)}
-        response =  self.fetch_from_cache_or_query(
+        params = {
+            "sellAmount": sell_amount,
+            "sellToken": w3.to_checksum_address(sell_token),
+        }
+        response = self.fetch_from_cache_or_query(
             contract_function, pool, params, block_num
         )
         order, _, _, _ = response
