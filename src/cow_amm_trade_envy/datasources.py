@@ -39,6 +39,9 @@ class DataFetcherConfig:
         if self.backoff_blocks is None:
             self.backoff_blocks = {"ethereum": 1800}
 
+        if self.network not in self.backoff_blocks:
+            raise ValueError(f"Network {self.network} not supported")
+
 
 class Web3Helper:
     def __init__(self, node_url: str):
@@ -333,6 +336,8 @@ class DataFetcher:
 
         if dfs:
             df = pl.concat(dfs).to_pandas()
+
+            assert df["price"].isna().sum() == 0
             with duckdb.connect(database=self.config.db_file) as conn:
                 upsert_data(table_name, df, conn)
 
