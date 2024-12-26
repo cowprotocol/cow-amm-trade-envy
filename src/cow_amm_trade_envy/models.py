@@ -1,5 +1,4 @@
 from web3 import Web3
-
 from typing import Dict, List, Tuple
 from dataclasses import dataclass
 
