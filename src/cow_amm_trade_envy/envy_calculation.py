@@ -1,7 +1,7 @@
 import json
 import pandas as pd
 from tqdm import tqdm
-from cow_amm_trade_envy.models import UCP, Pools, Tokens, SettlementTrades, Trade
+from cow_amm_trade_envy.models import UCP, Pools, Tokens, Token, SettlementTrades, Trade, BCowPool, CoWAmmOrderData
 from cow_amm_trade_envy.datasources import BCoWHelper
 from typing import Optional
 from cow_amm_trade_envy.db_utils import upsert_data
@@ -21,6 +21,30 @@ def preprocess_row(row: pd.Series) -> pd.Series:
     row["gas_price"] = int(row["gas_price"])
     return row
 
+def calc_max_cow_sell_amount(
+    pool: BCowPool, order: CoWAmmOrderData, block_num: int, selling_token: Token,
+    max_cow_amm_buy_amount: int, cow_amm_buy_amount: int
+) -> int:
+    """
+    Calculates the maximum amount of the selling token that the CoW AMM can buy.
+    In case the CoW is not fully filled, the helper is used to get the partial order.
+    """
+    ratio_filled = max_cow_amm_buy_amount / cow_amm_buy_amount
+    if ratio_filled == 1:
+        max_cow_amm_sell_amount = order.sellAmount
+    else:
+        # from CoWAMMs perspective, the selling_token is bought
+        partial_order = helper.order_from_buy_amount(
+            pool, selling_token.address, max_cow_amm_buy_amount, block_num
+        )
+
+        # if the helper was not yet deployed, we can't get the partial order
+        if partial_order is None:
+            max_cow_amm_sell_amount = order.sellAmount * ratio_filled
+        else:
+            max_cow_amm_sell_amount = partial_order.sellAmount
+
+    return max_cow_amm_sell_amount
 
 def calc_surplus_per_trade(
     ucp: UCP, trade: Trade, block_num: int, network: str
@@ -52,20 +76,10 @@ def calc_surplus_per_trade(
     cow_amm_buy_amount = order.buyAmount
     max_cow_amm_buy_amount = min(trade.sellAmount, cow_amm_buy_amount)
 
-    ratio_filled = max_cow_amm_buy_amount / cow_amm_buy_amount
-    if ratio_filled == 1:
-        max_cow_amm_sell_amount = order.sellAmount
-    else:
-        # from CoWAMMs perspective, the selling_token is bought
-        partial_order = helper.order_from_buy_amount(
-            pool, selling_token.address, max_cow_amm_buy_amount, block_num
-        )
 
-        # if the helper was not yet deployed, we can't get the partial order
-        if partial_order is None:
-            max_cow_amm_sell_amount = order.sellAmount * ratio_filled
-        else:
-            max_cow_amm_sell_amount = partial_order.sellAmount
+    max_cow_amm_sell_amount = calc_max_cow_sell_amount(
+        pool, order, block_num, selling_token, max_cow_amm_buy_amount, cow_amm_buy_amount
+    )
 
     executed_buy_amount = (
         max_cow_amm_buy_amount * ucp[selling_token] / ucp[buying_token]
@@ -78,6 +92,7 @@ def calc_surplus_per_trade(
     if trade.isOneToZero(pool):  # make sure its denominated in token1 of the pool
         surplus = surplus * ucp[pool.TOKEN0] / ucp[pool.TOKEN1]
 
+    # make sure its denominated in native token using pre-downloaded prices
     if buying_token != Tokens.native:
         rate_in_wrapped_native = get_token_to_native_rate(
             network, pool.TOKEN1.address, block_num

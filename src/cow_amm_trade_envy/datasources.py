@@ -194,6 +194,31 @@ def query_dune_data(query_nr: int, parameters: dict) -> pl.DataFrame:
     return df
 
 
+def populate_settlement_table_by_blockrange(
+    network: str, start_block: int, end_block: int
+):
+    table_name = f"{network}_settle"
+
+    if start_block > end_block:
+        return
+
+    splits = split_intervals(start_block, end_block, INTERVAL_LENGTH_SETTLE)
+    dfs = []
+
+    for left, right in tqdm(splits):
+        print(f"Fetching {left} to {right}")
+        params = {"start_block": left, "end_block": right, "network": network}
+        df = query_dune_data(QUERY_NR_SETTLE, params)
+        dfs.append(df)
+
+    df = pl.concat(dfs)
+    df = df.to_pandas()
+    df["gas_price"] = df["gas_price"].astype(int)
+
+    with duckdb.connect(database=DB_FILE) as conn:
+        upsert_data(table_name, df, conn)
+
+
 def populate_settlement_table(network: str):
     table_name = f"{network}_settle"
 
@@ -221,21 +246,34 @@ def populate_settlement_table(network: str):
             get_last_block_ingested(conn, table_name, "call_block_number") + 1
         )
 
-    if beginning_block > current_block:
+    populate_settlement_table_by_blockrange(network, beginning_block, current_block)
+
+
+def populate_price_table_by_blockrange(
+    network: str, token_address: str, start_block: int, end_block: int
+):
+    table_name = f"{network}_{token_address}_price"
+
+    if start_block > end_block:
         return
 
-    splits = split_intervals(beginning_block, current_block, INTERVAL_LENGTH_SETTLE)
+    splits = split_intervals(start_block, end_block, INTERVAL_LENGTH_PRICE)
     dfs = []
 
     for left, right in tqdm(splits):
         print(f"Fetching {left} to {right}")
-        params = {"start_block": left, "end_block": right, "network": network}
-        df = query_dune_data(QUERY_NR_SETTLE, params)
+        params = {
+            "contract_address": token_address,
+            "network": network,
+            "start_block": left,
+            "end_block": right,
+        }
+        df = query_dune_data(QUERY_NR_PRICE, params)
+
         dfs.append(df)
 
     df = pl.concat(dfs)
     df = df.to_pandas()
-    df["gas_price"] = df["gas_price"].astype(int)
 
     with duckdb.connect(database=DB_FILE) as conn:
         upsert_data(table_name, df, conn)
@@ -256,29 +294,9 @@ def populate_price_table(network: str, token_address: str):
         current_block = get_highest_block(network)
         beginning_block = get_last_block_ingested(conn, table_name, "block_number") + 1
 
-    if beginning_block > current_block:
-        return
-
-    splits = split_intervals(beginning_block, current_block, INTERVAL_LENGTH_PRICE)
-    dfs = []
-
-    for left, right in tqdm(splits):
-        print(f"Fetching {left} to {right}")
-        params = {
-            "contract_address": token_address,
-            "network": network,
-            "start_block": left,
-            "end_block": right,
-        }
-        df = query_dune_data(QUERY_NR_PRICE, params)
-
-        dfs.append(df)
-
-    df = pl.concat(dfs)
-    df = df.to_pandas()
-
-    with duckdb.connect(database=DB_FILE) as conn:
-        upsert_data(table_name, df, conn)
+    populate_price_table_by_blockrange(
+        network, token_address, beginning_block, current_block
+    )
 
 
 def get_token_to_native_rate(
@@ -310,6 +328,16 @@ def get_token_to_native_rate(
 def populate_price_tables(network: str):
     for token in tqdm(Tokens.tokens):
         populate_price_table(network, token.address)
+
+
+def populate_settlement_and_price_by_blockrange(
+    network: str, start_block: int, end_block: int
+):
+    populate_settlement_table_by_blockrange(network, start_block, end_block)
+    for token in Tokens.tokens:
+        populate_price_table_by_blockrange(
+            network, token.address, start_block, end_block
+        )
 
 
 if __name__ == "__main__":
