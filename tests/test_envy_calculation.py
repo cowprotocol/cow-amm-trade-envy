@@ -4,9 +4,27 @@ from cow_amm_trade_envy.envy_calculation import (
     EnvyCalculatorConfig,
 )
 from io import StringIO
+import os
+from dotenv import load_dotenv
 
-config = EnvyCalculatorConfig(network="ethereum", db_file="data.duckdb")
+from cow_amm_trade_envy.datasources import DataFetcher, DataFetcherConfig
+
+load_dotenv()
+
+DB_TEST = "data_test1.duckdb"
+
+config = EnvyCalculatorConfig(network="ethereum", db_file=DB_TEST)
 tec = TradeEnvyCalculator(config)
+
+config = DataFetcherConfig(
+    "ethereum",
+    DB_TEST,
+    node_url=os.getenv("NODE_URL"),
+    max_block=20842716,
+    min_block=20842476,
+)
+
+data_fetcher = DataFetcher(config)
 
 
 def get_row_from_string(row_str):
@@ -21,6 +39,13 @@ def get_row_from_string(row_str):
         "trades": data_row[5][0],
     }
     return row_as_dict
+
+
+def test_populate1():
+    """
+    Not really a test, just a way to populate the database with data
+    """
+    data_fetcher.populate_settlement_and_price()
 
 
 def test_calc_envy1():

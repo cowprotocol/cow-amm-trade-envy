@@ -32,6 +32,8 @@ class DataFetcherConfig:
     interval_length_settle: int = 10_000
     interval_length_price: int = 100_000
     backoff_blocks: Dict[str, int] = None
+    min_block: int = 20842476
+    max_block: Optional[int] = None
 
     def __post_init__(self):
         if self.backoff_blocks is None:
@@ -50,9 +52,10 @@ class Web3Helper:
 
 
 class DatabaseManager:
-    def __init__(self, db_file: str):
+    def __init__(self, db_file: str, default_min_block_number: int):
         self.db_file = db_file
         self.initialize_tables()
+        self.default_min_block_number = default_min_block_number
 
     def initialize_tables(self):
         with duckdb.connect(database=self.db_file) as conn:
@@ -87,7 +90,8 @@ class DatabaseManager:
             final_block_ingested = res.fetchdf().iloc[0, 0]
 
         if pd.isna(final_block_ingested):
-            return 20842476  # Default minimum block
+            return self.default_min_block_number
+
         return int(final_block_ingested)
 
 
@@ -95,7 +99,7 @@ class BCoWHelper:
     def __init__(self, config: DataFetcherConfig):
         self.config = config
         self.w3_helper = Web3Helper(config.node_url)
-        self.db_manager = DatabaseManager(config.db_file)
+        self.db_manager = DatabaseManager(config.db_file, config.min_block)
 
         # Full cow contract setup
         self.address_full_cow = "0x3FF0041A614A9E6Bf392cbB961C97DA214E9CB31"
@@ -175,7 +179,7 @@ class BCoWHelper:
 class DataFetcher:
     def __init__(self, config: DataFetcherConfig):
         self.config = config
-        self.db_manager = DatabaseManager(config.db_file)
+        self.db_manager = DatabaseManager(config.db_file, config.min_block)
         self.w3_helper = Web3Helper(config.node_url)
 
     def get_highest_block(self) -> int:
@@ -184,7 +188,10 @@ class DataFetcher:
                 self.w3_helper.get_block_number()
                 - self.config.backoff_blocks[self.config.network]
             )
-            return min(highest_block, 20842716)  # Temporary limit
+            if self.config.max_block is None:
+                return highest_block
+            else:
+                return min(highest_block, self.config.max_block)
         raise ValueError(f"Network {self.config.network} not supported")
 
     @staticmethod
@@ -200,39 +207,45 @@ class DataFetcher:
     def query_dune_data(self, query_nr: int, parameters: dict) -> pl.DataFrame:
         return spice.query(query_nr, parameters=parameters)
 
-    def populate_settlement_table(self):
+    def create_settlement_table(self):
         table_name = f"{self.config.network}_settle"
 
         create_table_query = f"""
-        CREATE TABLE IF NOT EXISTS {table_name} (
-            call_tx_hash TEXT PRIMARY KEY,
-            contract_address TEXT,
-            call_success BOOLEAN,
-            call_trace_address TEXT,
-            call_block_time TIMESTAMP,
-            call_block_number INTEGER,
-            tokens TEXT,
-            clearingPrices TEXT,
-            trades TEXT,
-            interactions TEXT,
-            gas_price BIGINT,
-            solver TEXT
-        );
-        """
+          CREATE TABLE IF NOT EXISTS {table_name} (
+              call_tx_hash TEXT PRIMARY KEY,
+              contract_address TEXT,
+              call_success BOOLEAN,
+              call_trace_address TEXT,
+              call_block_time TIMESTAMP,
+              call_block_number INTEGER,
+              tokens TEXT,
+              clearingPrices TEXT,
+              trades TEXT,
+              interactions TEXT,
+              gas_price BIGINT,
+              solver TEXT
+          );
+          """
 
         with duckdb.connect(database=self.config.db_file) as conn:
             conn.execute(create_table_query)
-            current_block = self.get_highest_block()
-            beginning_block = (
-                self.db_manager.get_last_block_ingested(table_name, "call_block_number")
-                + 1
-            )
+
+    def populate_settlement_table(self):
+        self.create_settlement_table()
+        table_name = f"{self.config.network}_settle"
+
+        current_block = self.get_highest_block()
+        beginning_block = (
+            self.db_manager.get_last_block_ingested(table_name, "call_block_number") + 1
+        )
 
         self.populate_settlement_table_by_blockrange(beginning_block, current_block)
 
     def populate_settlement_table_by_blockrange(self, start_block: int, end_block: int):
         if start_block > end_block:
             return
+
+        self.create_settlement_table()
 
         table_name = f"{self.config.network}_settle"
         splits = self.split_intervals(
@@ -261,9 +274,14 @@ class DataFetcher:
         for token in tqdm(Tokens.tokens):
             self.populate_price_table(token.address)
 
-    def populate_price_table(self, token_address: str):
-        table_name = f"{self.config.network}_{token_address}_price"
+    def populate_price_tables_by_blockrange(self, start_block: int, end_block: int):
+        for token in tqdm(Tokens.tokens):
+            self.populate_price_table_by_blockrange(
+                token.address, start_block, end_block
+            )
 
+    def create_price_table(self, token_address: str):
+        table_name = f"{self.config.network}_{token_address}_price"
         create_table_query = f"""
         CREATE TABLE IF NOT EXISTS {table_name} (
             block_number INTEGER PRIMARY KEY,
@@ -273,10 +291,16 @@ class DataFetcher:
 
         with duckdb.connect(database=self.config.db_file) as conn:
             conn.execute(create_table_query)
-            current_block = self.get_highest_block()
-            beginning_block = (
-                self.db_manager.get_last_block_ingested(table_name, "block_number") + 1
-            )
+
+    def populate_price_table(self, token_address: str):
+        table_name = f"{self.config.network}_{token_address}_price"
+
+        self.create_price_table(token_address)
+
+        current_block = self.get_highest_block()
+        beginning_block = (
+            self.db_manager.get_last_block_ingested(table_name, "block_number") + 1
+        )
 
         self.populate_price_table_by_blockrange(
             token_address, beginning_block, current_block
@@ -287,6 +311,8 @@ class DataFetcher:
     ):
         if start_block > end_block:
             return
+
+        self.create_price_table(token_address)
 
         table_name = f"{self.config.network}_{token_address}_price"
         splits = self.split_intervals(
@@ -336,13 +362,17 @@ class DataFetcher:
 
         return token_to_native_rate
 
+    def populate_settlement_and_price(self):
+        self.populate_settlement_table()
+        self.populate_price_tables()
+
 
 def main():
     load_dotenv()
 
     config = DataFetcherConfig(
         network="ethereum",
-        db_file=DB_FILE,  # Replace with actual path
+        db_file=DB_FILE,
         node_url=os.getenv("NODE_URL"),
     )
 
