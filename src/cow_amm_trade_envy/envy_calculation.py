@@ -13,9 +13,11 @@ from cow_amm_trade_envy.models import (
     BCowPool,
     CoWAmmOrderData,
 )
-from cow_amm_trade_envy.datasources import BCoWHelper, get_token_to_native_rate
+from cow_amm_trade_envy.datasources import BCoWHelper, DataFetcherConfig, DataFetcher
 from cow_amm_trade_envy.db_utils import upsert_data
 from cow_amm_trade_envy.constants import DB_FILE
+from dotenv import load_dotenv
+import os
 
 
 @dataclass
@@ -28,7 +30,13 @@ class EnvyCalculatorConfig:
 class TradeEnvyCalculator:
     def __init__(self, config: EnvyCalculatorConfig):
         self.config = config
-        self.helper = BCoWHelper(config.network)
+
+        load_dotenv()
+        dfc = DataFetcherConfig(
+            config.network, config.db_file, node_url=os.getenv("NODE_URL")
+        )
+        self.helper = BCoWHelper(dfc)
+        self.data_fetcher = DataFetcher(dfc)
 
     @staticmethod
     def preprocess_row(row: pd.Series) -> pd.Series:
@@ -117,8 +125,8 @@ class TradeEnvyCalculator:
 
         # make sure its denominated in native token using pre-downloaded prices
         if buying_token != Tokens.native:
-            rate_in_wrapped_native = get_token_to_native_rate(
-                self.config.network, pool.TOKEN1.address, block_num
+            rate_in_wrapped_native = self.data_fetcher.get_token_to_native_rate(
+                pool.TOKEN1.address, block_num
             )
             decimal_correction_factor = 10 ** (
                 Tokens.native.decimals - pool.TOKEN1.decimals
