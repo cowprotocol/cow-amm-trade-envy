@@ -165,6 +165,29 @@ class TradeEnvyCalculator:
 
         return envy_list
 
+    def check_pool_already_used(self, ucp_data: pd.DataFrame):
+
+        def isin_pool(topic: str, pool_address: str) -> bool:
+            if pool_address == "None":
+                return False
+            assert "0x" == pool_address[:2]
+            return pool_address[2:] in topic
+
+        def log_is_used(log, pool_address: str) -> bool:
+            return any(isin_pool(topic, pool_address) for topic in log["topics"])
+
+        def logs_are_used(logs, pool_address: str) -> bool | None:
+            if pool_address is None:
+                return False
+            return any(log_is_used(log, pool_address) for log in logs)
+
+        ucp_data["logs"] = ucp_data["call_tx_hash"].apply(self.helper.get_logs)
+        ucp_data["is_used"] = ucp_data.apply(
+            lambda row: logs_are_used(row["logs"], row["pool"]),
+            axis=1,
+        )
+        return ucp_data
+
     def create_envy_data(self):
         with duckdb.connect(database=DB_FILE) as conn:
             ucp_data = conn.execute(
@@ -187,11 +210,14 @@ class TradeEnvyCalculator:
         ucp_data["trade_envy"] = df_te["trade_envy"]
         ucp_data["pool"] = df_te["pool"]
 
+        ucp_data = self.check_pool_already_used(ucp_data)
+
         envy_data = pd.DataFrame(
             {
                 "call_tx_hash": ucp_data["call_tx_hash"],
                 "trade_envy": ucp_data["trade_envy"],
                 "pool": ["None" if pd.isna(x) else x for x in ucp_data["pool"]],
+                "is_used": ucp_data["is_used"],
             }
         )
 
@@ -200,16 +226,20 @@ class TradeEnvyCalculator:
         call_tx_hash TEXT,
         pool TEXT,
         trade_envy NUMERIC,
+        is_used BOOLEAN,
         PRIMARY KEY (call_tx_hash, pool)
         );
         """
 
+
         with duckdb.connect(database=DB_FILE) as conn:
+
             conn.execute(query_recreate_table)
             upsert_data(f"{self.config.network}_envy", envy_data, conn)
 
         if self.config.network == "ethereum":
             outfile = "data/cow_amm_missed_surplus.csv"
+            ucp_data.drop(columns=["logs"], inplace=True)
             ucp_data.to_csv(outfile)  # keep this for now to see changes in the diffs
 
 

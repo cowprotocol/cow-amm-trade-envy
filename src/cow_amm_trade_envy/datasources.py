@@ -178,6 +178,25 @@ class BCoWHelper:
         order, _, _, _ = response
         return CoWAmmOrderData.from_order_response(order)
 
+    def get_logs(self, tx_hash: str):
+        """Fetch logs from DuckDB cache or blockchain."""
+        cache_key = f"{self.config.network}_{tx_hash}"
+
+        with duckdb.connect(database=DB_FILE) as conn:
+            result = conn.execute(
+                f"SELECT response FROM receipt_cache WHERE key = '{cache_key}'"
+            ).fetchone()
+
+        if result:
+            return json.loads(result[0])
+        else:
+            receipt = self.w3_helper.w3.eth.get_transaction_receipt(tx_hash)
+            logs = json.dumps(receipt["logs"], default=self.json_serializer)
+            df_insert = pd.DataFrame({"key": [cache_key], "response": [logs]})
+            with duckdb.connect(database=DB_FILE) as conn:
+                # doesnt need to be upsert but shouldnt hurt
+                upsert_data("receipt_cache", df_insert, conn)
+            return json.loads(logs)
 
 class DataFetcher:
     def __init__(self, config: DataFetcherConfig):
