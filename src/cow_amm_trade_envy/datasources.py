@@ -1,7 +1,8 @@
 import os
+
+from cow_amm_trade_envy.configs import DataFetcherConfig
 from cow_amm_trade_envy.constants import DB_FILE
-from dataclasses import dataclass
-from typing import Optional, List, Tuple, Dict, Any
+from typing import Optional, List, Tuple, Any
 from dotenv import load_dotenv
 from web3 import Web3
 from web3.types import HexBytes
@@ -20,27 +21,6 @@ from cow_amm_trade_envy.constants import (
 )
 from cow_amm_trade_envy.models import CoWAmmOrderData, BCowPool, Tokens
 from cow_amm_trade_envy.db_utils import upsert_data
-
-
-@dataclass
-class DataFetcherConfig:
-    network: str
-    db_file: str
-    node_url: str
-    dune_query_settle: int = 4448838
-    dune_query_price: int = 4468197
-    interval_length_settle: int = 10_000
-    interval_length_price: int = 100_000
-    backoff_blocks: Dict[str, int] = None
-    min_block: int = 20842476
-    max_block: Optional[int] = None
-
-    def __post_init__(self):
-        if self.backoff_blocks is None:
-            self.backoff_blocks = {"ethereum": 1800}
-
-        if self.network not in self.backoff_blocks:
-            raise ValueError(f"Network {self.network} not supported")
 
 
 class Web3Helper:
@@ -197,6 +177,7 @@ class BCoWHelper:
                 # doesnt need to be upsert but shouldnt hurt
                 upsert_data("receipt_cache", df_insert, conn)
             return json.loads(logs)
+
 
 class DataFetcher:
     def __init__(self, config: DataFetcherConfig):
@@ -401,8 +382,7 @@ def main():
     )
 
     fetcher = DataFetcher(config)
-    fetcher.populate_settlement_table()
-    fetcher.populate_price_tables()
+    fetcher.populate_settlement_and_price()
 
 
 if __name__ == "__main__":

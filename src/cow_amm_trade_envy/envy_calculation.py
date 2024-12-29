@@ -2,8 +2,9 @@ import json
 import pandas as pd
 from tqdm import tqdm
 import duckdb
-from dataclasses import dataclass
 from typing import Optional, List, Dict, Any
+
+from cow_amm_trade_envy.configs import EnvyCalculatorConfig, DataFetcherConfig
 from cow_amm_trade_envy.models import (
     UCP,
     Pools,
@@ -13,28 +14,13 @@ from cow_amm_trade_envy.models import (
     BCowPool,
     CoWAmmOrderData,
 )
-from cow_amm_trade_envy.datasources import BCoWHelper, DataFetcherConfig, DataFetcher
+from cow_amm_trade_envy.datasources import BCoWHelper, DataFetcher
 from cow_amm_trade_envy.db_utils import upsert_data
-from cow_amm_trade_envy.constants import DB_FILE
-from dotenv import load_dotenv
-import os
-
-
-@dataclass
-class EnvyCalculatorConfig:
-    network: str
-    db_file: str
-    gas_cost_estimate: int = 100_000
 
 
 class TradeEnvyCalculator:
-    def __init__(self, config: EnvyCalculatorConfig):
+    def __init__(self, config: EnvyCalculatorConfig, dfc: DataFetcherConfig):
         self.config = config
-
-        load_dotenv()
-        dfc = DataFetcherConfig(
-            config.network, config.db_file, node_url=os.getenv("NODE_URL")
-        )
         self.helper = BCoWHelper(dfc)
         self.data_fetcher = DataFetcher(dfc)
 
@@ -166,7 +152,6 @@ class TradeEnvyCalculator:
         return envy_list
 
     def check_pool_already_used(self, ucp_data: pd.DataFrame):
-
         def isin_pool(topic: str, pool_address: str) -> bool:
             if pool_address == "None":
                 return False
@@ -189,7 +174,7 @@ class TradeEnvyCalculator:
         return ucp_data
 
     def create_envy_data(self):
-        with duckdb.connect(database=DB_FILE) as conn:
+        with duckdb.connect(database=self.config.db_file) as conn:
             ucp_data = conn.execute(
                 f"SELECT * FROM {self.config.network}_settle"
             ).fetchdf()
@@ -231,9 +216,7 @@ class TradeEnvyCalculator:
         );
         """
 
-
-        with duckdb.connect(database=DB_FILE) as conn:
-
+        with duckdb.connect(database=self.config.db_file) as conn:
             conn.execute(query_recreate_table)
             upsert_data(f"{self.config.network}_envy", envy_data, conn)
 
@@ -241,13 +224,3 @@ class TradeEnvyCalculator:
             outfile = "data/cow_amm_missed_surplus.csv"
             ucp_data.drop(columns=["logs"], inplace=True)
             ucp_data.to_csv(outfile)  # keep this for now to see changes in the diffs
-
-
-def main():
-    config = EnvyCalculatorConfig(network="ethereum", db_file=DB_FILE)
-    calculator = TradeEnvyCalculator(config)
-    calculator.create_envy_data()
-
-
-if __name__ == "__main__":
-    main()

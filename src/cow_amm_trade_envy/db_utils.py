@@ -18,7 +18,6 @@ def get_pkeys(table_name: str, conn: duckdb.DuckDBPyConnection) -> list:
 
 
 def upsert_data(table_name: str, df: pd.DataFrame, conn: duckdb.DuckDBPyConnection):
-
     columns = conn.table(table_name).columns
     df = df[columns]
     primary_keys = get_pkeys(table_name, conn)

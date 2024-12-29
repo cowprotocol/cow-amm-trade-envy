@@ -10,11 +10,5 @@ lint:
 dagster-run:
 	uv run dagster dev -w workspace.yaml
 
-report-render:
-	uv run src/cow_amm_trade_envy/render_report.py
-
-dune-query:
-	uv run src/cow_amm_trade_envy/datasources.py
-
-calc:
-	uv run src/cow_amm_trade_envy/envy_calculation.py
+run-pipeline:
+	uv run src/cow_amm_trade_envy/main.py

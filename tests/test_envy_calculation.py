@@ -1,30 +1,42 @@
 import pandas as pd
 from cow_amm_trade_envy.envy_calculation import (
     TradeEnvyCalculator,
-    EnvyCalculatorConfig,
 )
+from cow_amm_trade_envy.configs import EnvyCalculatorConfig, DataFetcherConfig
 from io import StringIO
 import os
 from dotenv import load_dotenv
 
-from cow_amm_trade_envy.datasources import DataFetcher, DataFetcherConfig
+from cow_amm_trade_envy.datasources import DataFetcher
 
 load_dotenv()
 
 DB_TEST = "data_test1.duckdb"
+DB_TEST2 = "data_test2.duckdb"
 
+# first timeframe for tests
 config = EnvyCalculatorConfig(network="ethereum", db_file=DB_TEST)
-tec = TradeEnvyCalculator(config)
-
-config = DataFetcherConfig(
+dfc = DataFetcherConfig(
     "ethereum",
     DB_TEST,
     node_url=os.getenv("NODE_URL"),
-    max_block=20842716,
     min_block=20842476,
+    max_block=20842716,
 )
+tec = TradeEnvyCalculator(config, dfc)
+data_fetcher = DataFetcher(dfc)
 
-data_fetcher = DataFetcher(config)
+# second time frame for tests
+config2 = EnvyCalculatorConfig(network="ethereum", db_file=DB_TEST2)
+dfc2 = DataFetcherConfig(
+    "ethereum",
+    DB_TEST2,
+    node_url=os.getenv("NODE_URL"),
+    min_block=20 * 10**6,
+    max_block=20 * 10**6 + 100,
+)
+tec2 = TradeEnvyCalculator(config2, dfc2)
+data_fetcher2 = DataFetcher(dfc2)
 
 
 def get_row_from_string(row_str):
@@ -46,6 +58,7 @@ def test_populate1():
     Not really a test, just a way to populate the database with data
     """
     data_fetcher.populate_settlement_and_price()
+    data_fetcher2.populate_settlement_and_price()
 
 
 def test_calc_envy1():
@@ -74,3 +87,7 @@ def test_calc_envy3():
     result = result[0]
     assert result["trade_envy"] == -2311335713655648 * 1e-18
     assert result["pool"] == "0xf08d4dea369c456d26a3168ff0024b904f2d8b91"
+
+
+def test_calc_envy_partial1():
+    pass

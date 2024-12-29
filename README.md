@@ -24,7 +24,6 @@ make dagster-run
 ### TODOs
 
 - query more dune data for a larger test
-- query price data for underfilled CoWs
 - more insights in the dashboard
 - add more chains (Maybe take the Pools class and adapt the pools for each chain
   - Make node url adaptable

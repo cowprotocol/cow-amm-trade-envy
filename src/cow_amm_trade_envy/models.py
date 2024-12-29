@@ -70,7 +70,8 @@ class BCowPool:
     def first_block_active(self) -> int:
         return self.creation_block + 1
 
-    __str__ = lambda self: self.checksum_address
+    def __str__(self):
+        return self.checksum_address
 
 
 @dataclass(frozen=True)
@@ -161,7 +162,7 @@ class Pools:
         for pool in self.get_pools():
             if pool.ADDRESS == address:
                 return pool.NAME
-        raise ValueError("Pool not found")
+        raise ValueError(f"Pool with address {address} not found")
 
 
 addr_to_token = Pools().get_token_lookup()
