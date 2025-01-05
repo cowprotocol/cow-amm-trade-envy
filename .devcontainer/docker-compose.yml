@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+      args:
+        UV_VERSION: 0.5.13
+        DEBIAN_VERSION: bookworm
+
+    volumes:
+      - ..:/workspaces:cached
+
+    # Prevents the container from shutting down after the main process ends.
+    command: sleep infinity
+
+    # Ensures the app can connect to the database using the same network.
+    depends_on:
+      - db
+    network_mode: service:db
+
+    # Environment variables for the application container.
+    environment:
+      DISPLAY: dummy
+      PYTHONUNBUFFERED: "1"
+      UV_LINK_MODE: copy
+      UV_PROJECT_ENVIRONMENT: /home/vscode/.venv
+
+    # Use forwardPorts in devcontainer.json for local access to app ports.
+
+  db:
+    image: postgres:latest
+    restart: unless-stopped
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD: password
+
+volumes:
+  postgres-data:

@@ -1,7 +1,6 @@
 import os
 
 from cow_amm_trade_envy.configs import DataFetcherConfig
-from cow_amm_trade_envy.constants import DB_FILE
 from typing import Optional, List, Tuple, Any
 from dotenv import load_dotenv
 from web3 import Web3
@@ -162,7 +161,7 @@ class BCoWHelper:
         """Fetch logs from DuckDB cache or blockchain."""
         cache_key = f"{self.config.network}_{tx_hash}"
 
-        with duckdb.connect(database=DB_FILE) as conn:
+        with duckdb.connect(database=self.db_manager.db_file) as conn:
             result = conn.execute(
                 f"SELECT response FROM receipt_cache WHERE key = '{cache_key}'"
             ).fetchone()
@@ -173,7 +172,7 @@ class BCoWHelper:
             receipt = self.w3_helper.w3.eth.get_transaction_receipt(tx_hash)
             logs = json.dumps(receipt["logs"], default=self.json_serializer)
             df_insert = pd.DataFrame({"key": [cache_key], "response": [logs]})
-            with duckdb.connect(database=DB_FILE) as conn:
+            with duckdb.connect(database=self.db_manager.db_file) as conn:
                 # doesnt need to be upsert but shouldnt hurt
                 upsert_data("receipt_cache", df_insert, conn)
             return json.loads(logs)
@@ -348,7 +347,7 @@ class DataFetcher:
         table_name = f"{network}_{token_address}_price"
         native = Tokens.native.address
 
-        with duckdb.connect(database=DB_FILE) as conn:
+        with duckdb.connect(database=self.db_manager.db_file) as conn:
             res = conn.query(
                 f"SELECT price FROM {table_name} WHERE block_number <= {block_number} ORDER BY block_number DESC LIMIT 1"
             ).fetchone()
@@ -377,7 +376,7 @@ def main():
 
     config = DataFetcherConfig(
         network="ethereum",
-        db_file=DB_FILE,
+        db_file="data.duckdb",
         node_url=os.getenv("NODE_URL"),
     )
 

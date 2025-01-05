@@ -14,7 +14,7 @@ dependencies = [
     "pyarrow>=18.1.0",
     "pytest>=8.3.4",
     "python-dotenv>=1.0.1",
-    "quarto>=0.1.0",
+    "quarto-cli>=1.6.39",
     "ruff>=0.8.2",
     "tqdm>=4.67.1",
     "web3==7.2",
