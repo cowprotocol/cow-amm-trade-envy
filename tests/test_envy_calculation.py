@@ -47,7 +47,7 @@ def get_row_from_string(row_str):
         "call_block_number": int(data_row[1][0]),
         "gas_price": int(data_row[2][0]),
         "tokens": data_row[3][0],
-        "clearingPrices": data_row[4][0],
+        "clearing_prices": data_row[4][0],
         "trades": data_row[5][0],
     }
     return row_as_dict

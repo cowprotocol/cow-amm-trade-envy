@@ -9,7 +9,8 @@ from web3.datastructures import AttributeDict
 import json
 import pandas as pd
 import polars as pl
-import duckdb
+import psycopg2
+from psycopg2.extras import execute_values
 import spice
 from tqdm import tqdm
 from tenacity import retry, stop_after_attempt, wait_fixed
@@ -34,54 +35,68 @@ class Web3Helper:
 
 
 class DatabaseManager:
-    def __init__(self, db_file: str, default_min_block_number: int):
-        self.db_file = db_file
-        self.initialize_tables()
+    def __init__(self, default_min_block_number: int):
         self.default_min_block_number = default_min_block_number
+        self.initialize_tables()
+
+    def connect(self):
+        # Get connection params from environment variables
+        db_params = {
+            "dbname": os.getenv("DB_NAME"),
+            "user": os.getenv("DB_USER"),
+            "password": os.getenv("DB_PASSWORD"),
+            "host": os.getenv("DB_HOST"),
+            "port": os.getenv("DB_PORT"),
+        }
+        return psycopg2.connect(**db_params)
 
     def initialize_tables(self):
-        with duckdb.connect(database=self.db_file) as conn:
-            conn.execute("""
+        with self.connect() as conn, conn.cursor() as cursor:
+            cursor.execute("""
             CREATE TABLE IF NOT EXISTS order_cache (
                 key TEXT PRIMARY KEY,
                 response TEXT
-            )
+            );
             """)
-            conn.execute("""
+            cursor.execute("""
             CREATE TABLE IF NOT EXISTS receipt_cache (
                 key TEXT PRIMARY KEY,
                 response TEXT
-            )
+            );
             """)
+            conn.commit()
 
     def get_cached_order(self, cache_key: str) -> Optional[str]:
-        with duckdb.connect(database=self.db_file) as conn:
-            result = conn.execute(
-                "SELECT response FROM order_cache WHERE key = ?", (cache_key,)
-            ).fetchone()
+        with self.connect() as conn, conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT response FROM order_cache WHERE key = %s", (cache_key,)
+            )
+            result = cursor.fetchone()
         return result[0] if result else None
 
     def cache_order(self, cache_key: str, response: str):
-        df_insert = pd.DataFrame({"key": [cache_key], "response": [response]})
-        with duckdb.connect(database=self.db_file) as conn:
-            upsert_data("order_cache", df_insert, conn)
+        query = """
+        INSERT INTO order_cache (key, response)
+        VALUES (%s, %s)
+        ON CONFLICT (key) DO UPDATE SET response = EXCLUDED.response;
+        """
+        with self.connect() as conn, conn.cursor() as cursor:
+            cursor.execute(query, (cache_key, response))
+            conn.commit()
 
     def get_last_block_ingested(self, table_name: str, block_col_name: str) -> int:
-        with duckdb.connect(database=self.db_file) as conn:
-            res = conn.query(f"SELECT MAX({block_col_name}) FROM {table_name}")
-            final_block_ingested = res.fetchdf().iloc[0, 0]
-
-        if pd.isna(final_block_ingested):
-            return self.default_min_block_number
-
-        return int(final_block_ingested)
+        query = f"SELECT MAX({block_col_name}) FROM {table_name}"
+        with self.connect() as conn, conn.cursor() as cursor:
+            cursor.execute(query)
+            result = cursor.fetchone()
+        return self.default_min_block_number if result[0] is None else int(result[0])
 
 
 class BCoWHelper:
     def __init__(self, config: DataFetcherConfig):
         self.config = config
         self.w3_helper = Web3Helper(config.node_url)
-        self.db_manager = DatabaseManager(config.db_file, config.min_block)
+        self.db_manager = DatabaseManager(config.min_block)
 
         # Full cow contract setup
         self.address_full_cow = "0x3FF0041A614A9E6Bf392cbB961C97DA214E9CB31"
@@ -158,13 +173,15 @@ class BCoWHelper:
         return CoWAmmOrderData.from_order_response(order)
 
     def get_logs(self, tx_hash: str):
-        """Fetch logs from DuckDB cache or blockchain."""
+        """Fetch logs from cache or blockchain."""
         cache_key = f"{self.config.network}_{tx_hash}"
 
-        with duckdb.connect(database=self.db_manager.db_file) as conn:
-            result = conn.execute(
-                f"SELECT response FROM receipt_cache WHERE key = '{cache_key}'"
-            ).fetchone()
+        with self.db_manager.connect() as conn, conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT response FROM receipt_cache WHERE key = %s",
+                (cache_key,)
+            )
+            result = cursor.fetchone()
 
         if result:
             return json.loads(result[0])
@@ -172,17 +189,101 @@ class BCoWHelper:
             receipt = self.w3_helper.w3.eth.get_transaction_receipt(tx_hash)
             logs = json.dumps(receipt["logs"], default=self.json_serializer)
             df_insert = pd.DataFrame({"key": [cache_key], "response": [logs]})
-            with duckdb.connect(database=self.db_manager.db_file) as conn:
+
+
+            with self.db_manager.connect() as conn:
                 # doesnt need to be upsert but shouldnt hurt
                 upsert_data("receipt_cache", df_insert, conn)
+
             return json.loads(logs)
 
 
 class DataFetcher:
     def __init__(self, config: DataFetcherConfig):
         self.config = config
-        self.db_manager = DatabaseManager(config.db_file, config.min_block)
+        self.db_manager = DatabaseManager(config.min_block)
         self.w3_helper = Web3Helper(config.node_url)
+
+    def create_settlement_table(self):
+        table_name = f"{self.config.network}_settle"
+        create_table_query = f"""
+        CREATE TABLE IF NOT EXISTS {table_name} (
+            call_tx_hash TEXT PRIMARY KEY,
+            contract_address TEXT,
+            call_success BOOLEAN,
+            call_trace_address TEXT,
+            call_block_time TIMESTAMP,
+            call_block_number INTEGER,
+            tokens TEXT,
+            clearing_prices TEXT,
+            trades TEXT,
+            interactions TEXT,
+            gas_price BIGINT,
+            solver TEXT
+        );
+        """
+        with self.db_manager.connect() as conn, conn.cursor() as cursor:
+            cursor.execute(create_table_query)
+            conn.commit()
+
+    def populate_settlement_table_by_blockrange(self, start_block: int, end_block: int):
+        if start_block > end_block:
+            return
+
+        self.create_settlement_table()
+        table_name = f"{self.config.network}_settle"
+        splits = self.split_intervals(
+            start_block, end_block, self.config.interval_length_settle
+        )
+
+        dfs = []
+        for left, right in tqdm(splits):
+            print(f"Fetching {left} to {right}")
+            params = {
+                "start_block": left,
+                "end_block": right,
+                "network": self.config.network,
+            }
+            df = self.query_dune_data(self.config.dune_query_settle, params)
+            dfs.append(df)
+
+        if dfs:
+            df = pl.concat(dfs).to_pandas()
+            df["gas_price"] = df["gas_price"].astype(int)
+
+            with self.db_manager.connect() as conn:
+                upsert_data(table_name, df, conn)
+
+    def populate_price_table_by_blockrange(
+        self, token_address: str, start_block: int, end_block: int
+    ):
+        if start_block > end_block:
+            return
+
+        self.create_price_table(token_address)
+        table_name = f"{self.config.network}_{token_address}_price"
+        splits = self.split_intervals(
+            start_block, end_block, self.config.interval_length_price
+        )
+
+        dfs = []
+        for left, right in tqdm(splits):
+            print(f"Fetching {left} to {right}")
+            params = {
+                "contract_address": token_address,
+                "network": self.config.network,
+                "start_block": left,
+                "end_block": right,
+            }
+            df = self.query_dune_data(self.config.dune_query_price, params)
+            dfs.append(df)
+
+        if dfs:
+            df = pl.concat(dfs).to_pandas()
+            assert df["price"].isna().sum() == 0
+
+            with self.db_manager.connect() as conn:
+                upsert_data(table_name, df, conn)
 
     def get_highest_block(self) -> int:
         if self.config.network == "ethereum":
@@ -209,29 +310,6 @@ class DataFetcher:
     def query_dune_data(self, query_nr: int, parameters: dict) -> pl.DataFrame:
         return spice.query(query_nr, parameters=parameters)
 
-    def create_settlement_table(self):
-        table_name = f"{self.config.network}_settle"
-
-        create_table_query = f"""
-          CREATE TABLE IF NOT EXISTS {table_name} (
-              call_tx_hash TEXT PRIMARY KEY,
-              contract_address TEXT,
-              call_success BOOLEAN,
-              call_trace_address TEXT,
-              call_block_time TIMESTAMP,
-              call_block_number INTEGER,
-              tokens TEXT,
-              clearingPrices TEXT,
-              trades TEXT,
-              interactions TEXT,
-              gas_price BIGINT,
-              solver TEXT
-          );
-          """
-
-        with duckdb.connect(database=self.config.db_file) as conn:
-            conn.execute(create_table_query)
-
     def populate_settlement_table(self):
         self.create_settlement_table()
         table_name = f"{self.config.network}_settle"
@@ -242,35 +320,6 @@ class DataFetcher:
         )
 
         self.populate_settlement_table_by_blockrange(beginning_block, current_block)
-
-    def populate_settlement_table_by_blockrange(self, start_block: int, end_block: int):
-        if start_block > end_block:
-            return
-
-        self.create_settlement_table()
-
-        table_name = f"{self.config.network}_settle"
-        splits = self.split_intervals(
-            start_block, end_block, self.config.interval_length_settle
-        )
-
-        dfs = []
-        for left, right in tqdm(splits):
-            print(f"Fetching {left} to {right}")
-            params = {
-                "start_block": left,
-                "end_block": right,
-                "network": self.config.network,
-            }
-            df = self.query_dune_data(self.config.dune_query_settle, params)
-            dfs.append(df)
-
-        if dfs:
-            df = pl.concat(dfs).to_pandas()
-            df["gas_price"] = df["gas_price"].astype(int)
-
-            with duckdb.connect(database=self.config.db_file) as conn:
-                upsert_data(table_name, df, conn)
 
     def populate_price_tables(self):
         for token in tqdm(Tokens.tokens):
@@ -290,9 +339,9 @@ class DataFetcher:
             price NUMERIC
         );
         """
-
-        with duckdb.connect(database=self.config.db_file) as conn:
-            conn.execute(create_table_query)
+        with self.db_manager.connect() as conn, conn.cursor() as cursor:
+            cursor.execute(create_table_query)
+            conn.commit()
 
     def populate_price_table(self, token_address: str):
         table_name = f"{self.config.network}_{token_address}_price"
@@ -337,7 +386,7 @@ class DataFetcher:
             df = pl.concat(dfs).to_pandas()
 
             assert df["price"].isna().sum() == 0
-            with duckdb.connect(database=self.config.db_file) as conn:
+            with self.db_manager.connect() as conn:
                 upsert_data(table_name, df, conn)
 
     def get_token_to_native_rate(
@@ -346,14 +395,32 @@ class DataFetcher:
         network = self.config.network
         table_name = f"{network}_{token_address}_price"
         native = Tokens.native.address
+        with self.db_manager.connect() as conn, conn.cursor() as cursor:
 
-        with duckdb.connect(database=self.db_manager.db_file) as conn:
-            res = conn.query(
-                f"SELECT price FROM {table_name} WHERE block_number <= {block_number} ORDER BY block_number DESC LIMIT 1"
-            ).fetchone()
-            native_price_res = conn.query(
-                f"SELECT price FROM {network}_{native}_price WHERE block_number <= {block_number} ORDER BY block_number DESC LIMIT 1"
-            ).fetchone()
+            cursor.execute(
+                f"""
+                SELECT price 
+                FROM {table_name} 
+                WHERE block_number <= %s 
+                ORDER BY block_number DESC 
+                LIMIT 1
+                """,
+                (block_number,)
+            )
+            res = cursor.fetchone()
+
+            # Query for the native token price
+            cursor.execute(
+                f"""
+                SELECT price 
+                FROM {network}_{native}_price 
+                WHERE block_number <= %s 
+                ORDER BY block_number DESC 
+                LIMIT 1
+                """,
+                (block_number,)
+            )
+            native_price_res = cursor.fetchone()
 
         if res is None or native_price_res is None:
             return None

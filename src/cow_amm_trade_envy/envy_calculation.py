@@ -1,7 +1,8 @@
 import json
 import pandas as pd
 from tqdm import tqdm
-import duckdb
+import psycopg2
+from psycopg2.extras import execute_values
 from typing import Optional, List, Dict, Any
 
 from cow_amm_trade_envy.configs import EnvyCalculatorConfig, DataFetcherConfig
@@ -29,7 +30,7 @@ class TradeEnvyCalculator:
         """Preprocesses a row of settlement data."""
         row = row.copy()
         row["tokens"] = row["tokens"].lower().strip("[]").split()
-        row["clearingPrices"] = row["clearingPrices"].lower().strip("[]").split()
+        row["clearing_prices"] = row["clearing_prices"].lower().strip("[]").split()
         row["trades"] = json.loads(row["trades"].replace(" ", ","))
         row["call_block_number"] = int(row["call_block_number"])
         row["gas_price"] = int(row["gas_price"])
@@ -128,11 +129,11 @@ class TradeEnvyCalculator:
     def calc_envy_per_settlement(self, row: pd.Series) -> List[Dict[str, Any]]:
         """Calculates envy for all trades in a settlement."""
         row = self.preprocess_row(row)
-        ucp = UCP.from_lists(row["tokens"], row["clearingPrices"])
+        ucp = UCP.from_lists(row["tokens"], row["clearing_prices"])
 
         eligible_settlement_trades = SettlementTrades.eligible_trades_from_lists(
             row["tokens"],
-            row["clearingPrices"],
+            row["clearing_prices"],
             row["trades"],
             row["call_block_number"],
         )
@@ -174,10 +175,13 @@ class TradeEnvyCalculator:
         return ucp_data
 
     def create_envy_data(self):
-        with duckdb.connect(database=self.config.db_file) as conn:
-            ucp_data = conn.execute(
-                f"SELECT * FROM {self.config.network}_settle"
-            ).fetchdf()
+
+        with self.data_fetcher.db_manager.connect() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(f"SELECT * FROM {self.config.network}_settle;")
+                ucp_data = pd.DataFrame(
+                    cursor.fetchall(), columns=[desc[0] for desc in cursor.description]
+                )
 
         ucp_data = ucp_data.sort_values("call_block_number", ascending=False)
         ucp_data.reset_index(drop=True, inplace=True)
@@ -195,18 +199,16 @@ class TradeEnvyCalculator:
         ucp_data["trade_envy"] = df_te["trade_envy"]
         ucp_data["pool"] = df_te["pool"]
 
-        ucp_data = self.check_pool_already_used(ucp_data)
-
         envy_data = pd.DataFrame(
             {
                 "call_tx_hash": ucp_data["call_tx_hash"],
-                "trade_envy": ucp_data["trade_envy"],
                 "pool": ["None" if pd.isna(x) else x for x in ucp_data["pool"]],
-                "is_used": ucp_data["is_used"],
+                "trade_envy": ucp_data["trade_envy"],
+                "is_used": False,  # Placeholder for now
             }
         )
 
-        query_recreate_table = f"""
+        create_table_query = f"""
         CREATE TABLE IF NOT EXISTS {self.config.network}_envy (
         call_tx_hash TEXT,
         pool TEXT,
@@ -216,11 +218,14 @@ class TradeEnvyCalculator:
         );
         """
 
-        with duckdb.connect(database=self.config.db_file) as conn:
-            conn.execute(query_recreate_table)
-            upsert_data(f"{self.config.network}_envy", envy_data, conn)
-
-        if self.config.network == "ethereum":
-            outfile = "data/cow_amm_missed_surplus.csv"
-            ucp_data.drop(columns=["logs"], inplace=True)
-            ucp_data.to_csv(outfile)  # keep this for now to see changes in the diffs
+        with self.data_fetcher.db_manager.connect() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(create_table_query)
+                execute_values(
+                    cursor,
+                    f"INSERT INTO {self.config.network}_envy (call_tx_hash, pool, trade_envy, is_used) VALUES %s "
+                    f"ON CONFLICT (call_tx_hash, pool) DO UPDATE SET "
+                    f"trade_envy = EXCLUDED.trade_envy, is_used = EXCLUDED.is_used",
+                    envy_data.to_records(index=False).tolist(),
+                )
+                conn.commit()

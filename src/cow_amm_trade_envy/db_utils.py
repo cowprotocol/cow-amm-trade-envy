@@ -1,26 +1,42 @@
-import duckdb
+import psycopg2
 import pandas as pd
+from psycopg2.extras import execute_values
 
 
-def get_pkeys(table_name: str, conn: duckdb.DuckDBPyConnection) -> list:
+def get_pkeys(table_name: str, conn) -> list:
+    """
+    Retrieves the primary key columns for a given table in PostgreSQL.
+    """
     pk_query = f"""
-    SELECT tc.constraint_name, kcu.column_name 
+    SELECT kcu.column_name
     FROM information_schema.table_constraints tc
     JOIN information_schema.key_column_usage kcu
       ON tc.constraint_name = kcu.constraint_name
     WHERE tc.constraint_type = 'PRIMARY KEY'
       AND tc.table_name = '{table_name}';
     """
+    with conn.cursor() as cursor:
+        cursor.execute(pk_query)
+        primary_keys = cursor.fetchall()
+    return [pk[0] for pk in primary_keys]
 
-    primary_keys = conn.execute(pk_query).fetchall()
-    primary_keys = [pk[1] for pk in primary_keys]
-    return primary_keys
 
+def upsert_data(table_name: str, df: pd.DataFrame, conn):
+    """
+    Upserts data into a PostgreSQL table.
+    """
+    with conn.cursor() as cursor:
+        cursor.execute(
+            f"SELECT column_name FROM information_schema.columns WHERE table_name = '{table_name}';"
+        )
+        columns = [row[0] for row in cursor.fetchall()]
 
-def upsert_data(table_name: str, df: pd.DataFrame, conn: duckdb.DuckDBPyConnection):
-    columns = conn.table(table_name).columns
     df = df[columns]
     primary_keys = get_pkeys(table_name, conn)
+
+    column_list = ", ".join(columns)
+    value_placeholders = ", ".join(["%s"] * len(columns))
+
     update_clause = ", ".join(
         [
             f"{column} = EXCLUDED.{column}"
@@ -33,10 +49,19 @@ def upsert_data(table_name: str, df: pd.DataFrame, conn: duckdb.DuckDBPyConnecti
     )
 
     upsert_query = f"""
-    INSERT INTO {table_name}
-    SELECT * FROM df
+    INSERT INTO {table_name} ({column_list})
+    VALUES {value_placeholders}
     {conflict_clause}
     """
 
-    df = df[columns]  # duckdb reads from in-memory DB, dont delete this
-    conn.execute(upsert_query)
+    with conn.cursor() as cursor:
+        execute_values(
+            cursor,
+            f"""
+            INSERT INTO {table_name} ({column_list})
+            VALUES %s
+            {conflict_clause}
+            """,
+            df.values.tolist(),
+        )
+    conn.commit()
