@@ -8,7 +8,11 @@ lint:
 	uv run ruff check
 
 run-pipeline-test:
-	uv run src/cow_amm_trade_envy/main.py --min_block 20842478 --max_block 20842717
+	uv run src/cow_amm_trade_envy/main.py --time_start '2024-09-27 14:12:23' --time_end '2024-09-27 15:00:23'
 
-run-pipeline-usdcweth:
-	uv run src/cow_amm_trade_envy/main.py --used_pool_names "['USDC-WETH']" --min_block 21500000
+run-pipeline-lastweek-usdcweth:
+	uv run src/cow_amm_trade_envy/main.py --used_pool_names "['USDC-WETH']" --time_start '2025-01-04 00:00:00' --time_end '2025-01-11 23:59:59'
+
+run-pipeline-lastweek:
+	uv run src/cow_amm_trade_envy/main.py --time_start '2025-01-05 00:00:00' --time_end '2025-01-11 23:59:59'
+

@@ -11,6 +11,8 @@ import pandas as pd
 import polars as pl
 import psycopg2
 from psycopg2.extras import execute_values
+from datetime import datetime, timezone
+
 import spice
 from tqdm import tqdm
 from tenacity import retry, stop_after_attempt, wait_fixed
@@ -357,6 +359,19 @@ class DataFetcher:
 
         for token in tokens_to_query:
             self.populate_price_table(token)
+
+    def get_block_number_by_time(self, time: str) -> int:
+
+        # convert to UTC
+        blocktime_query = 4558583
+        params = {
+            "network": self.config.network,
+            "blocktime": time,
+        }
+        df = self.query_dune_data(blocktime_query, params)
+        val = int(df["block_number"][0])
+        return val
+
 
     def populate_price_tables_by_blockrange(self, start_block: int, end_block: int):
         for token in Tokens.tokens:
