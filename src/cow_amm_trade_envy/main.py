@@ -29,7 +29,6 @@ def main(min_block: int, max_block: int = None, used_pool_names: list = None):
     else:
         used_pools = supported_pools
 
-
     config = EnvyCalculatorConfig(network="ethereum")  # DB_FILE
     dfc = DataFetcherConfig(
         config.network,
@@ -56,6 +55,5 @@ def main(min_block: int, max_block: int = None, used_pool_names: list = None):
 
 if __name__ == "__main__":
     load_dotenv()
-    main(20842478, 20842717) # todo remove
     Fire(main)
-    #main(21500000, None, ["USDC-WETH"])
+    # main(21500000, None)  # todo remove

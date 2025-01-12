@@ -8,6 +8,7 @@ from cow_amm_trade_envy.models import (
     UCP,
     Pools,
     Tokens,
+    Token,
     trades_from_lists,
     Trade,
     BCowPool,
@@ -47,7 +48,7 @@ class TradeEnvyCalculator:
         pool: BCowPool,
         order: CoWAmmOrderData,
         block_num: int,
-        selling_token: Tokens,
+        buying_token_cowamm: Token,
         max_cow_amm_buy_amount: int,
         cow_amm_buy_amount: int,
     ) -> int:
@@ -58,7 +59,7 @@ class TradeEnvyCalculator:
             return order.sellAmount
 
         partial_order = self.helper.order_from_buy_amount(
-            pool, selling_token.address, max_cow_amm_buy_amount, block_num
+            pool, buying_token_cowamm.address, max_cow_amm_buy_amount, block_num
         )
 
         if partial_order is None:
@@ -69,9 +70,6 @@ class TradeEnvyCalculator:
     def calc_surplus_per_trade(
         self, ucp: UCP, trade: Trade, block_num: int
     ) -> Optional[dict]:
-
-        if block_num == 20842479:
-            print("asd") # todo remove
 
         pool = Pools().get_fitting_pool(trade)
         order = self.helper.order(
@@ -100,11 +98,12 @@ class TradeEnvyCalculator:
         cow_amm_buy_amount = order.buyAmount
         max_cow_amm_buy_amount = min(trade.sellAmount, cow_amm_buy_amount)
 
+        buying_token_cowamm = selling_token
         max_cow_amm_sell_amount = self.calc_max_cow_sell_amount(
             pool,
             order,
             block_num,
-            selling_token,
+            buying_token_cowamm,
             max_cow_amm_buy_amount,
             cow_amm_buy_amount,
         )
@@ -121,7 +120,7 @@ class TradeEnvyCalculator:
             surplus = surplus * ucp[pool.TOKEN0] / ucp[pool.TOKEN1]
 
         # make sure its denominated in native token using pre-downloaded prices
-        if buying_token != Tokens.native:
+        if pool.TOKEN1 != Tokens.native:
             rate_in_wrapped_native = self.data_fetcher.get_token_to_native_rate(
                 pool.TOKEN1.address, block_num
             )
@@ -148,9 +147,7 @@ class TradeEnvyCalculator:
             row["call_block_number"],
         )  # todo remove filtering from eligible trades list function and rename
         # Add an index to each trade
-        settlement_trades_indexed = list(
-            enumerate(settlement_trades)
-        )
+        settlement_trades_indexed = list(enumerate(settlement_trades))
 
         # remove all None trades because they are not supported
         eligible_settlement_trades_indexed = [
@@ -166,7 +163,6 @@ class TradeEnvyCalculator:
             if Pools().get_fitting_pool(trade) in self.used_pools
         ]
 
-
         envy_list = []
         for i, trade in eligible_settlement_trades:
             surplus_data = self.calc_surplus_per_trade(
@@ -177,16 +173,14 @@ class TradeEnvyCalculator:
                 pool = surplus_data["pool"]
                 gas = self.calc_gas(row["gas_price"])
                 trade_envy = (surplus - gas) * 10 ** (-Tokens.native.decimals)
-                envy_list.append({"trade_envy": trade_envy, "pool": pool, "trade_index": i})
+                envy_list.append(
+                    {"trade_envy": trade_envy, "pool": pool, "trade_index": i}
+                )
 
         return envy_list
 
-
-    def check_pool_already_used(self, ucp_data: pd.DataFrame):
-
+    def check_pool_already_used(self, df: pd.DataFrame):
         def isin_pool(topic: str, pool_address: str) -> bool:
-            if pool_address == "None":
-                return False
             assert "0x" == pool_address[:2]
             return pool_address[2:] in topic
 
@@ -199,72 +193,24 @@ class TradeEnvyCalculator:
             return any(log_is_used(log, pool_address) for log in logs)
 
         # Convert the 'call_tx_hash' column to a list
-        call_tx_hashes = ucp_data["call_tx_hash"].tolist()
+        mask_poolnotna = [not pd.isna(x) for x in df["pool"]]
+        call_tx_hashes = list(set(df[mask_poolnotna]["call_tx_hash"].tolist()))
 
-        # Parallelize the get_logs function
-        #with ThreadPoolExecutor(max_workers=12) as executor:
-        #    logs_list = list(
-        #        tqdm(
-        #            executor.map(self.helper.get_logs, call_tx_hashes),
-        #            total=len(call_tx_hashes),
-        #            desc="Fetching logs",
-        #        )
-        #    )
         logs_list = self.helper.get_logs_batch(call_tx_hashes)
-        ucp_data["logs"] = logs_list
+        tx_hash_to_logs = dict(zip(call_tx_hashes, logs_list))
+        df["logs"] = df["call_tx_hash"].apply(lambda x: tx_hash_to_logs.get(x))
 
-        is_used_list = tqdm([
-            logs_are_used(logs, pool_address) for logs, pool_address in list(zip(ucp_data["logs"], ucp_data["pool"]))
-        ], desc="Processing is_used")
-
-        ucp_data["is_used"] = is_used_list
-
-        return ucp_data
-
-    def create_envy_data(self):
-        with self.data_fetcher.db_manager.connect() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(f"SELECT * FROM trade_envy.{self.config.network}_settle;")
-                ucp_data = pd.DataFrame(
-                    cursor.fetchall(), columns=[desc[0] for desc in cursor.description]
-                )
-
-        ucp_data = ucp_data.sort_values("call_block_number", ascending=False)
-        ucp_data.reset_index(drop=True, inplace=True)
-
-        trade_envy_per_settlement = [
-            self.calc_envy_per_settlement(row) for _, row in tqdm(ucp_data.iterrows(),
-                                                                  total=len(ucp_data),
-                                                                desc="Calculating envy for all pools per settlement")
+        df["is_used"] = None
+        df.loc[mask_poolnotna, "is_used"] = [
+            logs_are_used(logs, pool_address)
+            for logs, pool_address in list(
+                zip(df[mask_poolnotna]["logs"], df[mask_poolnotna]["pool"])
+            )
         ]
 
-        df_te = pd.DataFrame({"data": trade_envy_per_settlement,
-                              "call_tx_hash": ucp_data["call_tx_hash"]})
+        return df
 
-
-        df_te = df_te.explode("data")
-        df_te["pool"] = df_te["data"].apply(lambda x: None if pd.isna(x) else x["pool"])
-        df_te["trade_envy"] = df_te["data"].apply(
-            lambda x: None if pd.isna(x) else x["trade_envy"]
-        )
-        df_te["trade_index"] = df_te["data"].apply(
-            lambda x: None if pd.isna(x) else x["trade_index"]
-        )
-        #ucp_data["trade_envy"] = df_te["trade_envy"]
-        #ucp_data["pool"] = df_te["pool"]
-
-        df_te2 = self.check_pool_already_used(df_te)
-
-        envy_data = pd.DataFrame(
-            {
-                "call_tx_hash": df_te2["call_tx_hash"],
-                "trade_index": [int(x) if pd.notna(x) else -1 for x in df_te2["trade_index"]],
-                "pool": ["None" if pd.isna(x) else x for x in df_te2["pool"]],
-                "trade_envy": df_te2["trade_envy"],
-                "is_used": df_te2["is_used"],
-            }
-        )
-
+    def create_envy_data(self):
         table_name = f"{self.config.network}_envy"
 
         create_table_query = f"""
@@ -281,9 +227,67 @@ class TradeEnvyCalculator:
         with self.data_fetcher.db_manager.connect() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(create_table_query)
-                upsert_data(table_name, envy_data, conn)
+                cursor.execute(f"""
+                                SELECT settle.* 
+                                FROM trade_envy.{self.config.network}_settle AS settle
+                                LEFT JOIN trade_envy.{table_name} AS envy
+                                ON settle.call_tx_hash = envy.call_tx_hash
+                                WHERE envy.call_tx_hash IS NULL;
+                            """)
+                ucp_data = pd.DataFrame(
+                    cursor.fetchall(), columns=[desc[0] for desc in cursor.description]
+                )
+
+        ucp_data = ucp_data.sort_values("call_block_number", ascending=False)
+        ucp_data.reset_index(drop=True, inplace=True)
+
+        trade_envy_per_settlement = [
+            self.calc_envy_per_settlement(row)
+            for _, row in tqdm(
+                ucp_data.iterrows(),
+                total=len(ucp_data),
+                desc="Calculating envy for all pools per settlement (including helper query)",
+            )
+        ]
+
+        df_te = pd.DataFrame(
+            {
+                "data": trade_envy_per_settlement,
+                "call_tx_hash": ucp_data["call_tx_hash"],
+            }
+        )
+
+        df_te = df_te.explode("data")
+        df_te["pool"] = df_te["data"].apply(lambda x: None if pd.isna(x) else x["pool"])
+        df_te["trade_envy"] = df_te["data"].apply(
+            lambda x: None if pd.isna(x) else x["trade_envy"]
+        )
+        df_te["trade_index"] = df_te["data"].apply(
+            lambda x: None if pd.isna(x) else x["trade_index"]
+        )
+        # ucp_data["trade_envy"] = df_te["trade_envy"]
+        # ucp_data["pool"] = df_te["pool"]
+
+        df_te2 = self.check_pool_already_used(df_te)
+
+        envy_data = pd.DataFrame(
+            {
+                "call_tx_hash": df_te2["call_tx_hash"],
+                "trade_index": [
+                    int(x) if pd.notna(x) else -1 for x in df_te2["trade_index"]
+                ],
+                "pool": df_te2["pool"],
+                "trade_envy": df_te2["trade_envy"],
+                "is_used": df_te2["is_used"],
+            }
+        )
+
+        with self.data_fetcher.db_manager.connect() as conn:
+            upsert_data(table_name, envy_data, conn)
 
         # todo remove in the end
-        if self.config.network == "ethereum" and len(self.used_pools) == len(Pools().get_pools()):
+        if self.config.network == "ethereum" and len(self.used_pools) == len(
+            Pools().get_pools()
+        ):
             outfile = "data/cow_amm_missed_surplus.csv"
             envy_data.to_csv(outfile)  # keep this for now to see changes in the diffs

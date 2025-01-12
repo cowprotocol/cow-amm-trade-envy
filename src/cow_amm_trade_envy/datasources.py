@@ -14,12 +14,13 @@ from psycopg2.extras import execute_values
 import spice
 from tqdm import tqdm
 from tenacity import retry, stop_after_attempt, wait_fixed
+from logging import warning
 
 from cow_amm_trade_envy.constants import (
     BCOW_FULL_COW_HELPER_ABI,
     BCOW_PARTIAL_COW_HELPER_ABI,
 )
-from cow_amm_trade_envy.models import CoWAmmOrderData, BCowPool, Tokens
+from cow_amm_trade_envy.models import CoWAmmOrderData, BCowPool, Tokens, Token
 from cow_amm_trade_envy.db_utils import upsert_data
 
 
@@ -51,7 +52,6 @@ class DatabaseManager:
         return psycopg2.connect(**db_params)
 
     def initialize_tables(self):
-
         with self.connect() as conn, conn.cursor() as cursor:
             cursor.execute(
                 f"""
@@ -180,7 +180,7 @@ class BCoWHelper:
         order, _, _, _ = response
         return CoWAmmOrderData.from_order_response(order)
 
-    #def get_logs(self, tx_hash: str):
+    # def get_logs(self, tx_hash: str):
     #    """Fetch logs from cache or blockchain."""
     #    cache_key = f"{self.config.network}_{tx_hash}"
     #    with self.db_manager.connect() as conn, conn.cursor() as cursor:
@@ -210,7 +210,7 @@ class BCoWHelper:
         with self.db_manager.connect() as conn, conn.cursor() as cursor:
             cursor.execute(
                 "SELECT key, response FROM trade_envy.receipt_cache WHERE key = ANY(%s)",
-                (cache_keys,)
+                (cache_keys,),
             )
             cached_results = cursor.fetchall()
 
@@ -219,20 +219,20 @@ class BCoWHelper:
 
         # Identify tx_hashes not found in the cache
         uncached_keys = [
-            cache_key
-            for cache_key in cache_keys
-            if cache_key not in cache_dict
+            cache_key for cache_key in cache_keys if cache_key not in cache_dict
         ]
 
         uncached_logs = []
 
         if uncached_keys:
             # Fetch uncached logs from the blockchain
-            uncached_tx_hashes = [tx_hashes[cache_keys.index(key)] for key in
-                                  uncached_keys]
+            uncached_tx_hashes = [
+                tx_hashes[cache_keys.index(key)] for key in uncached_keys
+            ]
 
-            for tx_hash in tqdm(uncached_tx_hashes,
-                                desc="Fetching logs from blockchain"):
+            for tx_hash in tqdm(
+                uncached_tx_hashes, desc="Fetching logs from blockchain"
+            ):
                 receipt = self.w3_helper.w3.eth.get_transaction_receipt(tx_hash)
                 logs = json.dumps(receipt["logs"], default=self.json_serializer)
                 uncached_logs.append((f"{self.config.network}_{tx_hash}", logs))
@@ -247,8 +247,9 @@ class BCoWHelper:
             cache_dict.update({key: json.loads(logs) for key, logs in uncached_logs})
 
         # Return the logs in the same order as the input tx_hashes
-        result_logs = [cache_dict[f"{self.config.network}_{tx_hash}"] for tx_hash in
-                       tx_hashes]
+        result_logs = [
+            cache_dict[f"{self.config.network}_{tx_hash}"] for tx_hash in tx_hashes
+        ]
         return result_logs
 
 
@@ -291,8 +292,11 @@ class DataFetcher:
         )
 
         dfs = []
-        for left, right in tqdm(splits):
-            print(f"Fetching {left} to {right}")
+        for left, right in tqdm(
+            splits,
+            desc=f"Fetching settlement data from {start_block} to {end_block}",
+            unit="interval",
+        ):
             params = {
                 "start_block": left,
                 "end_block": right,
@@ -304,37 +308,6 @@ class DataFetcher:
         if dfs:
             df = pl.concat(dfs).to_pandas()
             df["gas_price"] = df["gas_price"].astype(int)
-
-            with self.db_manager.connect() as conn:
-                upsert_data(table_name, df, conn)
-
-    def populate_price_table_by_blockrange(
-        self, token_address: str, start_block: int, end_block: int
-    ):
-        if start_block > end_block:
-            return
-
-        self.create_price_table(token_address)
-        table_name = f"{self.config.network}_{token_address}_price"
-        splits = self.split_intervals(
-            start_block, end_block, self.config.interval_length_price
-        )
-
-        dfs = []
-        for left, right in tqdm(splits):
-            print(f"Fetching {left} to {right}")
-            params = {
-                "contract_address": token_address,
-                "network": self.config.network,
-                "start_block": left,
-                "end_block": right,
-            }
-            df = self.query_dune_data(self.config.dune_query_price, params)
-            dfs.append(df)
-
-        if dfs:
-            df = pl.concat(dfs).to_pandas()
-            assert df["price"].isna().sum() == 0
 
             with self.db_manager.connect() as conn:
                 upsert_data(table_name, df, conn)
@@ -362,7 +335,7 @@ class DataFetcher:
 
     @retry(stop=stop_after_attempt(5), wait=wait_fixed(2))
     def query_dune_data(self, query_nr: int, parameters: dict) -> pl.DataFrame:
-        return spice.query(query_nr, parameters=parameters)
+        return spice.query(query_nr, parameters=parameters, verbose=False)
 
     def populate_settlement_table(self):
         self.create_settlement_table()
@@ -382,15 +355,12 @@ class DataFetcher:
         ]
         tokens_to_query = list(set(pool_tokens))
 
-        for token in tqdm(tokens_to_query):
-            print(f"Fetching {token.name}")
-            self.populate_price_table(token.address)
+        for token in tokens_to_query:
+            self.populate_price_table(token)
 
     def populate_price_tables_by_blockrange(self, start_block: int, end_block: int):
-        for token in tqdm(Tokens.tokens):
-            self.populate_price_table_by_blockrange(
-                token.address, start_block, end_block
-            )
+        for token in Tokens.tokens:
+            self.populate_price_table_by_blockrange(token, start_block, end_block)
 
     def create_price_table(self, token_address: str):
         table_name = f"{self.config.network}_{token_address}_price"
@@ -404,7 +374,8 @@ class DataFetcher:
             cursor.execute(create_table_query)
             conn.commit()
 
-    def populate_price_table(self, token_address: str):
+    def populate_price_table(self, token: Token):
+        token_address = token.address
         table_name = f"{self.config.network}_{token_address}_price"
 
         self.create_price_table(token_address)
@@ -414,16 +385,14 @@ class DataFetcher:
             self.db_manager.get_last_block_ingested(table_name, "block_number") + 1
         )
 
-        self.populate_price_table_by_blockrange(
-            token_address, beginning_block, current_block
-        )
+        self.populate_price_table_by_blockrange(token, beginning_block, current_block)
 
     def populate_price_table_by_blockrange(
-        self, token_address: str, start_block: int, end_block: int
+        self, token: Token, start_block: int, end_block: int
     ):
         if start_block > end_block:
             return
-
+        token_address = token.address
         self.create_price_table(token_address)
 
         table_name = f"{self.config.network}_{token_address}_price"
@@ -432,8 +401,11 @@ class DataFetcher:
         )
 
         dfs = []
-        for left, right in tqdm(splits):
-            print(f"Fetching {left} to {right}")
+        for left, right in tqdm(
+            splits,
+            desc=f"Fetching {token.name} price from {start_block} to {end_block}",
+            unit="interval",
+        ):
             params = {
                 "contract_address": token_address,
                 "network": self.config.network,
@@ -445,7 +417,20 @@ class DataFetcher:
 
         if dfs:
             df = pl.concat(dfs).to_pandas()
-            assert df["price"].isna().sum() == 0
+
+            if df["price"].isna().sum() == len(df):
+                warning(
+                    f"All NaNs in {token.name} price. Not writing new price data for this token"
+                )
+                return
+
+            df["price"] = df["price"].astype(float)
+            df["price"] = df["price"].interpolate(method="linear")
+            if df["price"].isna().sum() > 0:
+                warning(
+                    f"NaNs in {token.name} price: {df['price'].isna().sum()}/{len(df)}. Interpolating"
+                )
+
             with self.db_manager.connect() as conn:
                 upsert_data(table_name, df, conn)
 
@@ -492,7 +477,6 @@ class DataFetcher:
 
         return token_to_native_rate
 
-
     def populate_settlement_and_price(self):
         self.populate_settlement_table()
         self.populate_price_tables()
@@ -503,7 +487,6 @@ def main():
 
     config = DataFetcherConfig(
         network="ethereum",
-        db_file="data.duckdb",
         node_url=os.getenv("NODE_URL"),
     )
 
