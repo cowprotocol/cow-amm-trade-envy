@@ -51,15 +51,22 @@ class DatabaseManager:
         return psycopg2.connect(**db_params)
 
     def initialize_tables(self):
+
         with self.connect() as conn, conn.cursor() as cursor:
+            cursor.execute(
+                f"""
+                CREATE SCHEMA IF NOT EXISTS trade_envy;
+                """
+            )
+
             cursor.execute("""
-            CREATE TABLE IF NOT EXISTS order_cache (
+            CREATE TABLE IF NOT EXISTS trade_envy.order_cache (
                 key TEXT PRIMARY KEY,
                 response TEXT
             );
             """)
             cursor.execute("""
-            CREATE TABLE IF NOT EXISTS receipt_cache (
+            CREATE TABLE IF NOT EXISTS trade_envy.receipt_cache (
                 key TEXT PRIMARY KEY,
                 response TEXT
             );
@@ -69,14 +76,15 @@ class DatabaseManager:
     def get_cached_order(self, cache_key: str) -> Optional[str]:
         with self.connect() as conn, conn.cursor() as cursor:
             cursor.execute(
-                "SELECT response FROM order_cache WHERE key = %s", (cache_key,)
+                "SELECT response FROM trade_envy.order_cache WHERE key = %s",
+                (cache_key,),
             )
             result = cursor.fetchone()
         return result[0] if result else None
 
     def cache_order(self, cache_key: str, response: str):
         query = """
-        INSERT INTO order_cache (key, response)
+        INSERT INTO trade_envy.order_cache (key, response)
         VALUES (%s, %s)
         ON CONFLICT (key) DO UPDATE SET response = EXCLUDED.response;
         """
@@ -85,7 +93,7 @@ class DatabaseManager:
             conn.commit()
 
     def get_last_block_ingested(self, table_name: str, block_col_name: str) -> int:
-        query = f"SELECT MAX({block_col_name}) FROM {table_name}"
+        query = f"SELECT MAX({block_col_name}) FROM trade_envy.{table_name}"
         with self.connect() as conn, conn.cursor() as cursor:
             cursor.execute(query)
             result = cursor.fetchone()
@@ -172,30 +180,76 @@ class BCoWHelper:
         order, _, _, _ = response
         return CoWAmmOrderData.from_order_response(order)
 
-    def get_logs(self, tx_hash: str):
-        """Fetch logs from cache or blockchain."""
-        cache_key = f"{self.config.network}_{tx_hash}"
+    #def get_logs(self, tx_hash: str):
+    #    """Fetch logs from cache or blockchain."""
+    #    cache_key = f"{self.config.network}_{tx_hash}"
+    #    with self.db_manager.connect() as conn, conn.cursor() as cursor:
+    #        cursor.execute(
+    #            "SELECT response FROM trade_envy.receipt_cache WHERE key = %s",
+    #            (cache_key,),
+    #        )
+    #        result = cursor.fetchone()
+    #
+    #    if result:
+    #        return json.loads(result[0])
+    #    else:
+    #        receipt = self.w3_helper.w3.eth.get_transaction_receipt(tx_hash)
+    #        logs = json.dumps(receipt["logs"], default=self.json_serializer)
+    #        df_insert = pd.DataFrame({"key": [cache_key], "response": [logs]})
+    #        with self.db_manager.connect() as conn:
+    #            # doesnt need to be upsert but shouldnt hurt
+    #            upsert_data("receipt_cache", df_insert, conn)
+    #        return json.loads(logs)
 
+    def get_logs_batch(self, tx_hashes: List[str]):
+        """Fetch logs for a batch of transaction hashes from cache or blockchain."""
+        cache_keys = [f"{self.config.network}_{tx_hash}" for tx_hash in tx_hashes]
+
+        print(f"Fetching logs for {len(tx_hashes)} tx_hashes")
+        # Fetch all relevant cache entries in one query
         with self.db_manager.connect() as conn, conn.cursor() as cursor:
             cursor.execute(
-                "SELECT response FROM receipt_cache WHERE key = %s",
-                (cache_key,)
+                "SELECT key, response FROM trade_envy.receipt_cache WHERE key = ANY(%s)",
+                (cache_keys,)
             )
-            result = cursor.fetchone()
+            cached_results = cursor.fetchall()
 
-        if result:
-            return json.loads(result[0])
-        else:
-            receipt = self.w3_helper.w3.eth.get_transaction_receipt(tx_hash)
-            logs = json.dumps(receipt["logs"], default=self.json_serializer)
-            df_insert = pd.DataFrame({"key": [cache_key], "response": [logs]})
+        # Convert cached results to a dictionary for quick lookup
+        cache_dict = {row[0]: json.loads(row[1]) for row in cached_results}
 
+        # Identify tx_hashes not found in the cache
+        uncached_keys = [
+            cache_key
+            for cache_key in cache_keys
+            if cache_key not in cache_dict
+        ]
 
-            with self.db_manager.connect() as conn:
-                # doesnt need to be upsert but shouldnt hurt
-                upsert_data("receipt_cache", df_insert, conn)
+        uncached_logs = []
 
-            return json.loads(logs)
+        if uncached_keys:
+            # Fetch uncached logs from the blockchain
+            uncached_tx_hashes = [tx_hashes[cache_keys.index(key)] for key in
+                                  uncached_keys]
+
+            for tx_hash in tqdm(uncached_tx_hashes,
+                                desc="Fetching logs from blockchain"):
+                receipt = self.w3_helper.w3.eth.get_transaction_receipt(tx_hash)
+                logs = json.dumps(receipt["logs"], default=self.json_serializer)
+                uncached_logs.append((f"{self.config.network}_{tx_hash}", logs))
+
+            # Insert the uncached logs into the cache
+            if uncached_logs:
+                df_insert = pd.DataFrame(uncached_logs, columns=["key", "response"])
+                with self.db_manager.connect() as conn:
+                    upsert_data("receipt_cache", df_insert, conn)
+
+            # Update cache_dict with the newly fetched logs
+            cache_dict.update({key: json.loads(logs) for key, logs in uncached_logs})
+
+        # Return the logs in the same order as the input tx_hashes
+        result_logs = [cache_dict[f"{self.config.network}_{tx_hash}"] for tx_hash in
+                       tx_hashes]
+        return result_logs
 
 
 class DataFetcher:
@@ -207,7 +261,7 @@ class DataFetcher:
     def create_settlement_table(self):
         table_name = f"{self.config.network}_settle"
         create_table_query = f"""
-        CREATE TABLE IF NOT EXISTS {table_name} (
+        CREATE TABLE IF NOT EXISTS trade_envy.{table_name} (
             call_tx_hash TEXT PRIMARY KEY,
             contract_address TEXT,
             call_success BOOLEAN,
@@ -322,7 +376,14 @@ class DataFetcher:
         self.populate_settlement_table_by_blockrange(beginning_block, current_block)
 
     def populate_price_tables(self):
-        for token in tqdm(Tokens.tokens):
+        used_pools = self.config.used_pools
+        pool_tokens = [pool.TOKEN0 for pool in used_pools] + [
+            pool.TOKEN1 for pool in used_pools
+        ]
+        tokens_to_query = list(set(pool_tokens))
+
+        for token in tqdm(tokens_to_query):
+            print(f"Fetching {token.name}")
             self.populate_price_table(token.address)
 
     def populate_price_tables_by_blockrange(self, start_block: int, end_block: int):
@@ -334,7 +395,7 @@ class DataFetcher:
     def create_price_table(self, token_address: str):
         table_name = f"{self.config.network}_{token_address}_price"
         create_table_query = f"""
-        CREATE TABLE IF NOT EXISTS {table_name} (
+        CREATE TABLE IF NOT EXISTS trade_envy.{table_name} (
             block_number INTEGER PRIMARY KEY,
             price NUMERIC
         );
@@ -384,7 +445,6 @@ class DataFetcher:
 
         if dfs:
             df = pl.concat(dfs).to_pandas()
-
             assert df["price"].isna().sum() == 0
             with self.db_manager.connect() as conn:
                 upsert_data(table_name, df, conn)
@@ -396,16 +456,15 @@ class DataFetcher:
         table_name = f"{network}_{token_address}_price"
         native = Tokens.native.address
         with self.db_manager.connect() as conn, conn.cursor() as cursor:
-
             cursor.execute(
                 f"""
                 SELECT price 
-                FROM {table_name} 
+                FROM trade_envy.{table_name} 
                 WHERE block_number <= %s 
                 ORDER BY block_number DESC 
                 LIMIT 1
                 """,
-                (block_number,)
+                (block_number,),
             )
             res = cursor.fetchone()
 
@@ -413,12 +472,12 @@ class DataFetcher:
             cursor.execute(
                 f"""
                 SELECT price 
-                FROM {network}_{native}_price 
+                FROM trade_envy.{network}_{native}_price 
                 WHERE block_number <= %s 
                 ORDER BY block_number DESC 
                 LIMIT 1
                 """,
-                (block_number,)
+                (block_number,),
             )
             native_price_res = cursor.fetchone()
 
@@ -432,6 +491,7 @@ class DataFetcher:
         token_to_native_rate = price / native_price
 
         return token_to_native_rate
+
 
     def populate_settlement_and_price(self):
         self.populate_settlement_table()

@@ -11,14 +11,11 @@ from cow_amm_trade_envy.datasources import DataFetcher
 
 load_dotenv()
 
-DB_TEST = "data_test1.duckdb"
-DB_TEST2 = "data_test2.duckdb"
 
 # first timeframe for tests
-config = EnvyCalculatorConfig(network="ethereum", db_file=DB_TEST)
+config = EnvyCalculatorConfig(network="ethereum")
 dfc = DataFetcherConfig(
     "ethereum",
-    DB_TEST,
     node_url=os.getenv("NODE_URL"),
     min_block=20842476,
     max_block=20842716,
@@ -27,10 +24,9 @@ tec = TradeEnvyCalculator(config, dfc)
 data_fetcher = DataFetcher(dfc)
 
 # second time frame for tests
-config2 = EnvyCalculatorConfig(network="ethereum", db_file=DB_TEST2)
+config2 = EnvyCalculatorConfig(network="ethereum")
 dfc2 = DataFetcherConfig(
     "ethereum",
-    DB_TEST2,
     node_url=os.getenv("NODE_URL"),
     min_block=20 * 10**6,
     max_block=20 * 10**6 + 100,

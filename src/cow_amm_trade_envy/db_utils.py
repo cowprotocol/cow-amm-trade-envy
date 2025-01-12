@@ -27,7 +27,7 @@ def upsert_data(table_name: str, df: pd.DataFrame, conn):
     """
     with conn.cursor() as cursor:
         cursor.execute(
-            f"SELECT column_name FROM information_schema.columns WHERE table_name = '{table_name}';"
+            f"SELECT column_name FROM information_schema.columns WHERE table_name = '{table_name}' and table_schema = 'trade_envy';"
         )
         columns = [row[0] for row in cursor.fetchall()]
 
@@ -35,7 +35,6 @@ def upsert_data(table_name: str, df: pd.DataFrame, conn):
     primary_keys = get_pkeys(table_name, conn)
 
     column_list = ", ".join(columns)
-    value_placeholders = ", ".join(["%s"] * len(columns))
 
     update_clause = ", ".join(
         [
@@ -49,19 +48,15 @@ def upsert_data(table_name: str, df: pd.DataFrame, conn):
     )
 
     upsert_query = f"""
-    INSERT INTO {table_name} ({column_list})
-    VALUES {value_placeholders}
+    INSERT INTO trade_envy.{table_name} ({column_list})
+    VALUES %s
     {conflict_clause}
     """
 
     with conn.cursor() as cursor:
         execute_values(
             cursor,
-            f"""
-            INSERT INTO {table_name} ({column_list})
-            VALUES %s
-            {conflict_clause}
-            """,
+            upsert_query,
             df.values.tolist(),
         )
     conn.commit()

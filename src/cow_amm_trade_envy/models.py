@@ -235,46 +235,37 @@ class Trade:
         return self.sellToken == pool.TOKEN1 and self.buyToken == pool.TOKEN0
 
 
-@dataclass(frozen=True)
-class SettlementTrades:
-    trades: List[Trade]
+def trades_from_lists(
+    tokens: list, prices: list, trades: list, block_num: int
+) -> List["Trade"]:
+    trades_processed = []
+    for trade in trades:
+        buy_token = tokens[int(trade["buyTokenIndex"])].lower()
+        sell_token = tokens[int(trade["sellTokenIndex"])].lower()
+        buy_amount = int(trade["buyAmount"])
+        sell_amount = int(trade["sellAmount"])
+        buy_price = int(prices[int(trade["buyTokenIndex"])])
+        sell_price = int(prices[int(trade["sellTokenIndex"])])
 
-    def __getitem__(self, index):
-        return self.trades[index]
+        is_supported = Pools().pair_is_supported(buy_token, sell_token)
+        if not is_supported:
+            trades_processed.append(None)
+            continue
 
-    @classmethod
-    def eligible_trades_from_lists(
-        cls, tokens: list, prices: list, trades: list, block_num: int
-    ) -> "SettlementTrades":
-        trades_processed = []
-        for trade in trades:
-            buy_token = tokens[int(trade["buyTokenIndex"])].lower()
-            sell_token = tokens[int(trade["sellTokenIndex"])].lower()
-            buy_amount = int(trade["buyAmount"])
-            sell_amount = int(trade["sellAmount"])
-            buy_price = int(prices[int(trade["buyTokenIndex"])])
-            sell_price = int(prices[int(trade["sellTokenIndex"])])
+        pool = Pools()[(buy_token, sell_token)]
+        if block_num < pool.first_block_active:  # trade before pool creation
+            trades_processed.append(None)
+            continue
 
-            is_supported = Pools().pair_is_supported(buy_token, sell_token)
-            if not is_supported:
-                continue
-
-            pool = Pools()[(buy_token, sell_token)]
-            if block_num < pool.first_block_active:  # trade before pool creation
-                continue
-
-            trades_processed.append(
-                Trade(
-                    buyToken=addr_to_token[buy_token],
-                    sellToken=addr_to_token[sell_token],
-                    buyAmount=buy_amount,
-                    sellAmount=sell_amount,
-                    buyPrice=buy_price,
-                    sellPrice=sell_price,
-                )
+        trades_processed.append(
+            Trade(
+                buyToken=addr_to_token[buy_token],
+                sellToken=addr_to_token[sell_token],
+                buyAmount=buy_amount,
+                sellAmount=sell_amount,
+                buyPrice=buy_price,
+                sellPrice=sell_price,
             )
+        )
 
-        return cls(trades=trades_processed)
-
-    def __iter__(self):
-        return iter(self.trades)
+    return trades_processed

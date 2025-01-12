@@ -1,21 +1,43 @@
 from cow_amm_trade_envy.datasources import DataFetcher
+from cow_amm_trade_envy.models import Pools
 from cow_amm_trade_envy.configs import DataFetcherConfig
 from dotenv import load_dotenv
 import os
 from cow_amm_trade_envy.envy_calculation import TradeEnvyCalculator
 from cow_amm_trade_envy.configs import EnvyCalculatorConfig
 from cow_amm_trade_envy.render_report import render_report
+from fire import Fire
 
 
-def main():
-    config = EnvyCalculatorConfig(network="ethereum", db_file="data.duckdb")  # DB_FILE
+def main(min_block: int, max_block: int = None, used_pool_names: list = None):
+    supported_pools = Pools().get_pools()
+
+    # make sure there are no duplicates
+    supported_pool_names = [x.NAME for x in supported_pools]
+    used_pools = []
+    if used_pool_names is not None:
+        assert len(used_pool_names) == len(set(used_pool_names)), "Duplicate pool names"
+        for pool_name in used_pool_names:
+            if pool_name not in supported_pool_names:
+                raise ValueError(
+                    f"Pool {pool_name} is not supported. Possible pools are {supported_pool_names}"
+                )
+            used_pools.append(supported_pools[supported_pool_names.index(pool_name)])
+
+        if len(used_pools) == 0:
+            raise ValueError("No pools selected")
+    else:
+        used_pools = supported_pools
+
+
+    config = EnvyCalculatorConfig(network="ethereum")  # DB_FILE
     dfc = DataFetcherConfig(
         config.network,
-        config.db_file,
         node_url=os.getenv("NODE_URL"),
         # min_block=20 * 10 ** 6, max_block=20 * 10 ** 6 + 10000  # todo
-        min_block=20842476,
-        max_block=20842716,
+        min_block=min_block,  # 21475765,
+        max_block=max_block,  # 21525891,
+        used_pools=used_pools,
     )
     # todo add network config
 
@@ -24,7 +46,8 @@ def main():
     data_fetcher.populate_settlement_and_price()
 
     # calculate (and fetch data from local storage or node)
-    calculator = TradeEnvyCalculator(config, dfc)
+
+    calculator = TradeEnvyCalculator(config, dfc, used_pools)
     calculator.create_envy_data()
 
     # generate report
@@ -33,4 +56,6 @@ def main():
 
 if __name__ == "__main__":
     load_dotenv()
-    main()
+    main(20842478, 20842717) # todo remove
+    Fire(main)
+    #main(21500000, None, ["USDC-WETH"])
