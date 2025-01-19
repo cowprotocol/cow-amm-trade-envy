@@ -111,9 +111,8 @@ class TradeEnvyCalculator:
             max_cow_amm_buy_amount * ucp[selling_token] / ucp[buying_token]
         )
 
-        surplus = (
-            max_cow_amm_sell_amount - executed_buy_amount
-        )  # denominated in buying token
+        # denominated in buying token
+        surplus = max_cow_amm_sell_amount - executed_buy_amount
 
         if trade.isOneToZero(pool):  # make sure its denominated in token1 of the pool
             surplus = surplus * ucp[pool.TOKEN0] / ucp[pool.TOKEN1]

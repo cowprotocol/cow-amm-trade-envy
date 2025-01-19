@@ -94,12 +94,12 @@ class DatabaseManager:
             cursor.execute(query, (cache_key, response))
             conn.commit()
 
-    def get_last_block_ingested(self, table_name: str, block_col_name: str) -> int:
+    def get_first_block_to_ingest(self, table_name: str, block_col_name: str) -> int:
         query = f"SELECT MAX({block_col_name}) FROM trade_envy.{table_name}"
         with self.connect() as conn, conn.cursor() as cursor:
             cursor.execute(query)
             result = cursor.fetchone()
-        return self.seed_min_block_number if result[0] is None else int(result[0])
+        return self.seed_min_block_number if result[0] is None else int(result[0]) + 1
 
 
 class BCoWHelper:
@@ -323,15 +323,15 @@ class DataFetcher:
         table_name = f"{self.config.network}_settle"
 
         current_block = self.get_highest_block()
-        beginning_block = (
-            self.db_manager.get_last_block_ingested(table_name, "call_block_number") + 1
+        beginning_block = self.db_manager.get_first_block_to_ingest(
+            table_name, "call_block_number"
         )
         if current_block + 1 == beginning_block:
             return
 
         if beginning_block > current_block + 1:
             raise ValueError(
-                f"No new blocks to ingest because the last block ingested ({beginning_block}) is greater than the current max block to ingest ({current_block})"
+                f"No new blocks to ingest because the next block to be ingested ({beginning_block}) is greater than the current max block to ingest ({current_block})"
             )
 
         self.populate_settlement_table_by_blockrange(beginning_block, current_block)
@@ -380,15 +380,15 @@ class DataFetcher:
         self.create_price_table(token_address)
 
         current_block = self.get_highest_block()
-        beginning_block = (
-            self.db_manager.get_last_block_ingested(table_name, "block_number") + 1
+        beginning_block = self.db_manager.get_first_block_to_ingest(
+            table_name, "block_number"
         )
         if current_block + 1 == beginning_block:
             return
 
         if beginning_block > current_block + 1:
             raise ValueError(
-                f"No new blocks to ingest because the last block ingested ({beginning_block}) is greater than the current max block to ingest ({current_block})"
+                f"No new blocks to ingest because the next block to be ingested ({beginning_block}) is greater than the current max block to ingest ({current_block})"
             )
 
         self.populate_price_table_by_blockrange(token, beginning_block, current_block)

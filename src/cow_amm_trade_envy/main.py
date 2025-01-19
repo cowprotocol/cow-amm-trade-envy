@@ -9,9 +9,9 @@ from fire import Fire
 import datetime
 
 
-def main_by_time(time_start: str, time_end: str = None, used_pool_names: list = None,
-                 dev=False):
-
+def main_by_time(
+    time_start: str, time_end: str = None, used_pool_names: list = None, dev=False
+):
     if dev:
         load_dotenv()
     else:
