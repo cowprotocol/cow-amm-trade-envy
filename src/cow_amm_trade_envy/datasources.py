@@ -1,6 +1,11 @@
 import os
 
-from cow_amm_trade_envy.configs import DataFetcherConfig
+from cow_amm_trade_envy.configs import (
+    DataFetcherConfig,
+    BCOW_FULL_COW_HELPER_ABI,
+    BCOW_PARTIAL_COW_HELPER_ABI,
+    PGConfig,
+)
 from typing import Optional, List, Tuple, Any
 from dotenv import load_dotenv
 from web3 import Web3
@@ -10,18 +15,12 @@ import json
 import pandas as pd
 import polars as pl
 import psycopg2
-from psycopg2.extras import execute_values
-from datetime import datetime, timezone
 
 import spice
 from tqdm import tqdm
 from tenacity import retry, stop_after_attempt, wait_fixed
 from logging import warning
 
-from cow_amm_trade_envy.constants import (
-    BCOW_FULL_COW_HELPER_ABI,
-    BCOW_PARTIAL_COW_HELPER_ABI,
-)
 from cow_amm_trade_envy.models import CoWAmmOrderData, BCowPool, Tokens, Token
 from cow_amm_trade_envy.db_utils import upsert_data
 
@@ -38,25 +37,26 @@ class Web3Helper:
 
 
 class DatabaseManager:
-    def __init__(self, default_min_block_number: int):
-        self.default_min_block_number = default_min_block_number
+    def __init__(self, seed_min_block_number: int, pg_config: PGConfig):
+        self.seed_min_block_number = seed_min_block_number
+        self.pg_config = pg_config
         self.initialize_tables()
 
     def connect(self):
         # Get connection params from environment variables
         db_params = {
-            "dbname": os.getenv("DB_NAME"),
-            "user": os.getenv("DB_USER"),
-            "password": os.getenv("DB_PASSWORD"),
-            "host": os.getenv("DB_HOST"),
-            "port": os.getenv("DB_PORT"),
+            "dbname": self.pg_config.database,
+            "user": self.pg_config.user,
+            "password": self.pg_config.password,
+            "host": self.pg_config.host,
+            "port": self.pg_config.port,
         }
         return psycopg2.connect(**db_params)
 
     def initialize_tables(self):
         with self.connect() as conn, conn.cursor() as cursor:
             cursor.execute(
-                f"""
+                """
                 CREATE SCHEMA IF NOT EXISTS trade_envy;
                 """
             )
@@ -99,14 +99,14 @@ class DatabaseManager:
         with self.connect() as conn, conn.cursor() as cursor:
             cursor.execute(query)
             result = cursor.fetchone()
-        return self.default_min_block_number if result[0] is None else int(result[0])
+        return self.seed_min_block_number if result[0] is None else int(result[0])
 
 
 class BCoWHelper:
     def __init__(self, config: DataFetcherConfig):
         self.config = config
         self.w3_helper = Web3Helper(config.node_url)
-        self.db_manager = DatabaseManager(config.min_block)
+        self.db_manager = DatabaseManager(config.min_block, config.pg_config)
 
         # Full cow contract setup
         self.address_full_cow = "0x3FF0041A614A9E6Bf392cbB961C97DA214E9CB31"
@@ -182,27 +182,6 @@ class BCoWHelper:
         order, _, _, _ = response
         return CoWAmmOrderData.from_order_response(order)
 
-    # def get_logs(self, tx_hash: str):
-    #    """Fetch logs from cache or blockchain."""
-    #    cache_key = f"{self.config.network}_{tx_hash}"
-    #    with self.db_manager.connect() as conn, conn.cursor() as cursor:
-    #        cursor.execute(
-    #            "SELECT response FROM trade_envy.receipt_cache WHERE key = %s",
-    #            (cache_key,),
-    #        )
-    #        result = cursor.fetchone()
-    #
-    #    if result:
-    #        return json.loads(result[0])
-    #    else:
-    #        receipt = self.w3_helper.w3.eth.get_transaction_receipt(tx_hash)
-    #        logs = json.dumps(receipt["logs"], default=self.json_serializer)
-    #        df_insert = pd.DataFrame({"key": [cache_key], "response": [logs]})
-    #        with self.db_manager.connect() as conn:
-    #            # doesnt need to be upsert but shouldnt hurt
-    #            upsert_data("receipt_cache", df_insert, conn)
-    #        return json.loads(logs)
-
     def get_logs_batch(self, tx_hashes: List[str]):
         """Fetch logs for a batch of transaction hashes from cache or blockchain."""
         cache_keys = [f"{self.config.network}_{tx_hash}" for tx_hash in tx_hashes]
@@ -258,7 +237,7 @@ class BCoWHelper:
 class DataFetcher:
     def __init__(self, config: DataFetcherConfig):
         self.config = config
-        self.db_manager = DatabaseManager(config.min_block)
+        self.db_manager = DatabaseManager(config.min_block, config.pg_config)
         self.w3_helper = Web3Helper(config.node_url)
 
     def create_settlement_table(self):
@@ -347,6 +326,13 @@ class DataFetcher:
         beginning_block = (
             self.db_manager.get_last_block_ingested(table_name, "call_block_number") + 1
         )
+        if current_block + 1 == beginning_block:
+            return
+
+        if beginning_block > current_block + 1:
+            raise ValueError(
+                f"No new blocks to ingest because the last block ingested ({beginning_block}) is greater than the current max block to ingest ({current_block})"
+            )
 
         self.populate_settlement_table_by_blockrange(beginning_block, current_block)
 
@@ -361,7 +347,6 @@ class DataFetcher:
             self.populate_price_table(token)
 
     def get_block_number_by_time(self, time: str) -> int:
-
         # convert to UTC
         blocktime_query = 4558583
         params = {
@@ -371,7 +356,6 @@ class DataFetcher:
         df = self.query_dune_data(blocktime_query, params)
         val = int(df["block_number"][0])
         return val
-
 
     def populate_price_tables_by_blockrange(self, start_block: int, end_block: int):
         for token in Tokens.tokens:
@@ -399,6 +383,13 @@ class DataFetcher:
         beginning_block = (
             self.db_manager.get_last_block_ingested(table_name, "block_number") + 1
         )
+        if current_block + 1 == beginning_block:
+            return
+
+        if beginning_block > current_block + 1:
+            raise ValueError(
+                f"No new blocks to ingest because the last block ingested ({beginning_block}) is greater than the current max block to ingest ({current_block})"
+            )
 
         self.populate_price_table_by_blockrange(token, beginning_block, current_block)
 

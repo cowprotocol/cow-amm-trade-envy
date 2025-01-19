@@ -70,7 +70,6 @@ class TradeEnvyCalculator:
     def calc_surplus_per_trade(
         self, ucp: UCP, trade: Trade, block_num: int
     ) -> Optional[dict]:
-
         pool = Pools().get_fitting_pool(trade)
         order = self.helper.order(
             pool=pool,
@@ -194,7 +193,7 @@ class TradeEnvyCalculator:
 
         # Convert the 'call_tx_hash' column to a list
         mask_poolnotna = [not pd.isna(x) for x in df["pool"]]
-        call_tx_hashes = list(set(df[mask_poolnotna]["call_tx_hash"].tolist()))
+        call_tx_hashes = list(set(df["call_tx_hash"][mask_poolnotna].tolist()))
 
         logs_list = self.helper.get_logs_batch(call_tx_hashes)
         tx_hash_to_logs = dict(zip(call_tx_hashes, logs_list))
@@ -204,7 +203,7 @@ class TradeEnvyCalculator:
         df.loc[mask_poolnotna, "is_used"] = [
             logs_are_used(logs, pool_address)
             for logs, pool_address in list(
-                zip(df[mask_poolnotna]["logs"], df[mask_poolnotna]["pool"])
+                zip(df["logs"][mask_poolnotna], df["pool"][mask_poolnotna])
             )
         ]
 
@@ -250,35 +249,35 @@ class TradeEnvyCalculator:
             )
         ]
 
-        df_te = pd.DataFrame(
+        df_envy = pd.DataFrame(
             {
                 "data": trade_envy_per_settlement,
                 "call_tx_hash": ucp_data["call_tx_hash"],
             }
         )
 
-        df_te = df_te.explode("data")
-        df_te["pool"] = df_te["data"].apply(lambda x: None if pd.isna(x) else x["pool"])
-        df_te["trade_envy"] = df_te["data"].apply(
+        df_envy = df_envy.explode("data")
+        df_envy["pool"] = df_envy["data"].apply(
+            lambda x: None if pd.isna(x) else x["pool"]
+        )
+        df_envy["trade_envy"] = df_envy["data"].apply(
             lambda x: None if pd.isna(x) else x["trade_envy"]
         )
-        df_te["trade_index"] = df_te["data"].apply(
+        df_envy["trade_index"] = df_envy["data"].apply(
             lambda x: None if pd.isna(x) else x["trade_index"]
         )
-        # ucp_data["trade_envy"] = df_te["trade_envy"]
-        # ucp_data["pool"] = df_te["pool"]
 
-        df_te2 = self.check_pool_already_used(df_te)
+        df_envy = self.check_pool_already_used(df_envy)
 
         envy_data = pd.DataFrame(
             {
-                "call_tx_hash": df_te2["call_tx_hash"],
+                "call_tx_hash": df_envy["call_tx_hash"],
                 "trade_index": [
-                    int(x) if pd.notna(x) else -1 for x in df_te2["trade_index"]
+                    int(x) if pd.notna(x) else -1 for x in df_envy["trade_index"]
                 ],
-                "pool": df_te2["pool"],
-                "trade_envy": df_te2["trade_envy"],
-                "is_used": df_te2["is_used"],
+                "pool": df_envy["pool"],
+                "trade_envy": df_envy["trade_envy"],
+                "is_used": df_envy["is_used"],
             }
         )
 

@@ -8,3 +8,4 @@ tester.py
 src/cow_amm_trade_envy.egg-info
 
 data.duckdb
+.env.test

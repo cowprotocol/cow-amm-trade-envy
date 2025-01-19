@@ -6,33 +6,22 @@ from cow_amm_trade_envy.configs import EnvyCalculatorConfig, DataFetcherConfig
 from io import StringIO
 import os
 from dotenv import load_dotenv
-
 from cow_amm_trade_envy.datasources import DataFetcher
 
-load_dotenv()
+test_env = ".env.test"
+load_dotenv(test_env)
 
 
-# first timeframe for tests
 config = EnvyCalculatorConfig(network="ethereum")
 dfc = DataFetcherConfig(
     "ethereum",
     node_url=os.getenv("NODE_URL"),
-    min_block=20842476,
-    max_block=20842716,
+    min_block=21 * 10**6,
+    max_block=21 * 10**6 + 1000,
 )
+
 tec = TradeEnvyCalculator(config, dfc)
 data_fetcher = DataFetcher(dfc)
-
-# second time frame for tests
-config2 = EnvyCalculatorConfig(network="ethereum")
-dfc2 = DataFetcherConfig(
-    "ethereum",
-    node_url=os.getenv("NODE_URL"),
-    min_block=20 * 10**6,
-    max_block=20 * 10**6 + 100,
-)
-tec2 = TradeEnvyCalculator(config2, dfc2)
-data_fetcher2 = DataFetcher(dfc2)
 
 
 def get_row_from_string(row_str):
@@ -54,7 +43,6 @@ def test_populate1():
     Not really a test, just a way to populate the database with data
     """
     data_fetcher.populate_settlement_and_price()
-    data_fetcher2.populate_settlement_and_price()
 
 
 def test_calc_envy1():

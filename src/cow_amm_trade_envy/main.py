@@ -1,21 +1,30 @@
 from cow_amm_trade_envy.datasources import DataFetcher
 from cow_amm_trade_envy.models import Pools
-from cow_amm_trade_envy.configs import DataFetcherConfig
 from dotenv import load_dotenv
 import os
 from cow_amm_trade_envy.envy_calculation import TradeEnvyCalculator
-from cow_amm_trade_envy.configs import EnvyCalculatorConfig
+from cow_amm_trade_envy.configs import EnvyCalculatorConfig, DataFetcherConfig, PGConfig
 from cow_amm_trade_envy.render_report import render_report
 from fire import Fire
-from datetime import datetime
+
 
 def main_by_time(time_start: str, time_end: str = None, used_pool_names: list = None):
+    pg_config = PGConfig(
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+        host=os.getenv("DB_HOST"),
+        database=os.getenv("DB_NAME"),
+        port=os.getenv("DB_PORT"),
+    )
 
-    data_fetcher = DataFetcher(DataFetcherConfig(
-        min_block=0,
-        network="ethereum",
-        node_url=os.getenv("NODE_URL"),
-    ))
+    data_fetcher = DataFetcher(
+        DataFetcherConfig(
+            min_block=0,  # just a dummy
+            pg_config=pg_config,
+            network="ethereum",
+            node_url=os.getenv("NODE_URL"),
+        )
+    )
 
     print(f"Getting blocks for times {time_start} and {time_end}...")
     min_block = data_fetcher.get_block_number_by_time(time_start)
@@ -23,8 +32,6 @@ def main_by_time(time_start: str, time_end: str = None, used_pool_names: list = 
     print(f"Got blocks {min_block} and {max_block}")
 
     main(min_block, max_block, used_pool_names)
-
-
 
 
 def main(min_block: int, max_block: int = None, used_pool_names: list = None):
@@ -49,12 +56,21 @@ def main(min_block: int, max_block: int = None, used_pool_names: list = None):
 
     config = EnvyCalculatorConfig(network="ethereum")  # DB_FILE
 
+    pg_config = PGConfig(
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+        host=os.getenv("DB_HOST"),
+        database=os.getenv("DB_NAME"),
+        port=os.getenv("DB_PORT"),
+    )
+
     dfc = DataFetcherConfig(
         config.network,
         node_url=os.getenv("NODE_URL"),
         # min_block=20 * 10 ** 6, max_block=20 * 10 ** 6 + 10000  # todo
         min_block=min_block,  # 21475765,
         max_block=max_block,  # 21525891,
+        pg_config=pg_config,
         used_pools=used_pools,
     )
 
@@ -73,4 +89,4 @@ def main(min_block: int, max_block: int = None, used_pool_names: list = None):
 if __name__ == "__main__":
     load_dotenv()
     Fire(main_by_time)
-    #main(21500000, None)  # todo remove
+    # main(21500000, None)  # todo remove
