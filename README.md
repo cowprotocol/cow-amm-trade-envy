@@ -51,5 +51,5 @@ uv run src/cow_amm_trade_envy/main.py --time_start '2025-01-04 00:00:00' --time_
 
 ### Notes
 
-- is it safe enough to assume the sender of the settlement is the solver or do I have to check that in the logs? (Settlement)
+- Since Dune doesn't ingest prices in real time we have backed off the highest block for 6h worth of blocks. If a higher block is specified for ingestion it will be set to the highest block minus 6h.
 - Keep an eye on: Point queries of helper calls to postgres could be much slower in production when the DB isnt on the same machine

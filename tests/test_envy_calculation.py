@@ -2,20 +2,28 @@ import pandas as pd
 from cow_amm_trade_envy.envy_calculation import (
     TradeEnvyCalculator,
 )
-from cow_amm_trade_envy.configs import EnvyCalculatorConfig, DataFetcherConfig
+from cow_amm_trade_envy.configs import EnvyCalculatorConfig, DataFetcherConfig, PGConfig
 from io import StringIO
 import os
 from dotenv import load_dotenv
 from cow_amm_trade_envy.datasources import DataFetcher
 
-test_env = ".env.test"
+test_env = ".env"
 load_dotenv(test_env)
 
+pg_config = PGConfig(
+    user=os.getenv("DB_USER"),
+    password=os.getenv("DB_PASSWORD"),
+    host=os.getenv("DB_HOST"),
+    database=os.getenv("DB_NAME"),
+    port=os.getenv("DB_PORT"),
+)
 
 config = EnvyCalculatorConfig(network="ethereum")
 dfc = DataFetcherConfig(
     "ethereum",
     node_url=os.getenv("NODE_URL"),
+    pg_config=pg_config,
     min_block=21 * 10**6,
     max_block=21 * 10**6 + 1000,
 )

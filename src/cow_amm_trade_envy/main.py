@@ -6,9 +6,22 @@ from cow_amm_trade_envy.envy_calculation import TradeEnvyCalculator
 from cow_amm_trade_envy.configs import EnvyCalculatorConfig, DataFetcherConfig, PGConfig
 from cow_amm_trade_envy.render_report import render_report
 from fire import Fire
+import datetime
 
 
-def main_by_time(time_start: str, time_end: str = None, used_pool_names: list = None):
+def main_by_time(time_start: str, time_end: str = None, used_pool_names: list = None,
+                 dev=False):
+
+    if dev:
+        load_dotenv()
+    else:
+        # check that the env vars are set
+        with open(".env", "r") as f:
+            for line in f.readlines():
+                var_name = line.split("=")[0]
+                if os.getenv(var_name) is None:
+                    raise ValueError(f"Env var {var_name} is not set")
+
     pg_config = PGConfig(
         user=os.getenv("DB_USER"),
         password=os.getenv("DB_PASSWORD"),
@@ -25,6 +38,9 @@ def main_by_time(time_start: str, time_end: str = None, used_pool_names: list = 
             node_url=os.getenv("NODE_URL"),
         )
     )
+    if time_end is None:
+        date_end = datetime.datetime.now(datetime.timezone.utc)
+        time_end = date_end.strftime("%Y-%m-%d %H:%M:%S")
 
     print(f"Getting blocks for times {time_start} and {time_end}...")
     min_block = data_fetcher.get_block_number_by_time(time_start)
@@ -87,6 +103,5 @@ def main(min_block: int, max_block: int = None, used_pool_names: list = None):
 
 
 if __name__ == "__main__":
-    load_dotenv()
     Fire(main_by_time)
     # main(21500000, None)  # todo remove

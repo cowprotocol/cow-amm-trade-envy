@@ -488,17 +488,5 @@ class DataFetcher:
         self.populate_price_tables()
 
 
-def main():
-    load_dotenv()
-
-    config = DataFetcherConfig(
-        network="ethereum",
-        node_url=os.getenv("NODE_URL"),
-    )
-
-    fetcher = DataFetcher(config)
-    fetcher.populate_settlement_and_price()
-
-
 if __name__ == "__main__":
     main()
