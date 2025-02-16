@@ -21,13 +21,7 @@ def main_by_time(
                 if os.getenv(var_name) is None:
                     raise ValueError(f"Env var {var_name} is not set")
 
-    pg_config = PGConfig(
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        host=os.getenv("DB_HOST"),
-        database=os.getenv("DB_NAME"),
-        port=os.getenv("DB_PORT"),
-    )
+    pg_config = PGConfig(postgres_url=os.getenv("DB_URL"))
 
     data_fetcher = DataFetcher(
         DataFetcherConfig(
@@ -71,13 +65,7 @@ def main(min_block: int, max_block: int = None, used_pool_names: list = None):
 
     config = EnvyCalculatorConfig(network="ethereum")  # DB_FILE
 
-    pg_config = PGConfig(
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        host=os.getenv("DB_HOST"),
-        database=os.getenv("DB_NAME"),
-        port=os.getenv("DB_PORT"),
-    )
+    pg_config = PGConfig(postgres_url=os.getenv("DB_URL"))
 
     dfc = DataFetcherConfig(
         config.network,

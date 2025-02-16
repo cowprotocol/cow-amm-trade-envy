@@ -16,13 +16,7 @@ from cow_amm_trade_envy.datasources import DataFetcher
 test_env = ".env"
 load_dotenv(test_env)
 
-pg_config = PGConfig(
-    user=os.getenv("DB_USER"),
-    password=os.getenv("DB_PASSWORD"),
-    host=os.getenv("DB_HOST"),
-    database=os.getenv("DB_NAME"),
-    port=os.getenv("DB_PORT"),
-)
+pg_config = PGConfig(postgres_url=os.getenv("DB_URL"))
 
 config = EnvyCalculatorConfig(network="ethereum")
 dfc = DataFetcherConfig(

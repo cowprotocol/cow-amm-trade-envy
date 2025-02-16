@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Dict, Optional, List
 from cow_amm_trade_envy.models import Pools, BCowPool
+from urllib.parse import urlparse
 
 
 @dataclass
@@ -10,12 +11,15 @@ class EnvyCalculatorConfig:
 
 
 class PGConfig:
-    def __init__(self, user: str, password: str, host: str, port: int, database: str):
-        self.user = user
-        self.password = password
-        self.host = host
-        self.port = port
-        self.database = database
+    def __init__(self, postgres_url: str):
+        self.postgres_url = postgres_url
+
+        url = urlparse(postgres_url)
+        self.user = url.username
+        self.password = url.password
+        self.host = url.hostname
+        self.port = url.port
+        self.database = url.path[1:]
 
 
 @dataclass
