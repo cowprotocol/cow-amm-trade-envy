@@ -4,7 +4,6 @@ from dotenv import load_dotenv
 import os
 from cow_amm_trade_envy.envy_calculation import TradeEnvyCalculator
 from cow_amm_trade_envy.configs import EnvyCalculatorConfig, DataFetcherConfig, PGConfig
-from cow_amm_trade_envy.render_report import render_report
 from fire import Fire
 import datetime
 
@@ -98,10 +97,8 @@ def main(min_block: int, max_block: int = None, used_pool_names: list = None):
     calculator = TradeEnvyCalculator(config, dfc, used_pools)
     calculator.create_envy_data()
 
-    # generate report
-    render_report()
-
 
 if __name__ == "__main__":
     Fire(main_by_time)
-    # main(21500000, None)  # todo remove
+    # load_dotenv()
+    # main(21762909, 21762910, used_pool_names=["USDC-WETH"])  # todo remove

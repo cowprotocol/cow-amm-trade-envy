@@ -207,15 +207,35 @@ class UCP:
         return self.prices[token.address]
 
     @classmethod
-    def from_lists(cls, tokens: List[Token], prices: List[int]) -> "UCP":
+    def from_lists(cls, tokens: List[Token], prices: List[int], n_trades: int) -> "UCP":
         if len(tokens) != len(prices):
             raise ValueError("Cannot zip different lengths")
         prices = [int(price) for price in prices]
         tokens_prices = dict()
-        for token, price in zip(tokens, prices):
+
+        # this is to make sure that no trade data is included in the UCPs
+        tokens_with_prices = list(zip(tokens, prices))[: -2 * n_trades]
+
+        for token, price in tokens_with_prices:
             # The first occurence of a price in list is the clearing price
+            # further below is just trade data - not UCPs
             if token not in tokens_prices:
                 tokens_prices[token] = price
+
+        # dicts are ordered
+        # fix problem that arises from the fact that the coin of the blockchain, called
+        # 0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee in the price sometimes represents
+        # the wrapped native coin.
+
+        # Note: substituting price of wrapped native with the price of the native coin
+        # leads to unrealistic envy prices
+
+        # Therefore, we only substitute the wrapped price if it doesnt occur in the UCPs
+        # (and only in the trade data)
+        coin = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        if coin in tokens_prices and Tokens.native.address not in tokens_prices:
+            tokens_prices[Tokens.native.address] = tokens_prices[coin]
+
         return cls(prices=tokens_prices)
 
 

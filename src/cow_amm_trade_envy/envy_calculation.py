@@ -136,7 +136,6 @@ class TradeEnvyCalculator:
     def calc_envy_per_settlement(self, row: pd.Series) -> List[Dict[str, Any]]:
         """Calculates envy for all trades in a settlement."""
         row = self.preprocess_row(row)
-        ucp = UCP.from_lists(row["tokens"], row["clearing_prices"])
 
         settlement_trades = trades_from_lists(
             row["tokens"],
@@ -144,6 +143,10 @@ class TradeEnvyCalculator:
             row["trades"],
             row["call_block_number"],
         )  # todo remove filtering from eligible trades list function and rename
+
+        n_trades = len(settlement_trades)
+        ucp = UCP.from_lists(row["tokens"], row["clearing_prices"], n_trades=n_trades)
+
         # Add an index to each trade
         settlement_trades_indexed = list(enumerate(settlement_trades))
 
@@ -210,15 +213,16 @@ class TradeEnvyCalculator:
 
     def create_envy_data(self):
         table_name = f"{self.config.network}_envy"
-
         create_table_query = f"""
         CREATE TABLE IF NOT EXISTS trade_envy.{table_name} (
-        call_tx_hash TEXT,
-        trade_index INTEGER,
-        pool TEXT,
-        trade_envy NUMERIC,
-        is_used BOOLEAN,
-        PRIMARY KEY (call_tx_hash, trade_index)
+            call_tx_hash TEXT,
+            trade_index INTEGER,
+            pool TEXT,
+            pool_name TEXT,
+            solver TEXT,
+            trade_envy NUMERIC,
+            is_used BOOLEAN,
+            PRIMARY KEY (call_tx_hash, trade_index)
         );
         """
 
@@ -238,7 +242,6 @@ class TradeEnvyCalculator:
 
         ucp_data = ucp_data.sort_values("call_block_number", ascending=False)
         ucp_data.reset_index(drop=True, inplace=True)
-
         trade_envy_per_settlement = [
             self.calc_envy_per_settlement(row)
             for _, row in tqdm(
@@ -254,7 +257,6 @@ class TradeEnvyCalculator:
                 "call_tx_hash": ucp_data["call_tx_hash"],
             }
         )
-
         df_envy = df_envy.explode("data")
         df_envy["pool"] = df_envy["data"].apply(
             lambda x: None if pd.isna(x) else x["pool"]
@@ -265,8 +267,17 @@ class TradeEnvyCalculator:
         df_envy["trade_index"] = df_envy["data"].apply(
             lambda x: None if pd.isna(x) else x["trade_index"]
         )
-
         df_envy = self.check_pool_already_used(df_envy)
+
+        # Merge the solver column from the settlement (ucp_data) into the envy DataFrame.
+        df_envy = df_envy.merge(
+            ucp_data[["call_tx_hash", "solver"]], on="call_tx_hash", how="left"
+        )
+
+        # Compute the pool_name based on the pool address, if available.
+        df_envy["pool_name"] = df_envy["pool"].apply(
+            lambda x: Pools().get_name_from_address(x) if pd.notna(x) else None
+        )
 
         envy_data = pd.DataFrame(
             {
@@ -275,6 +286,8 @@ class TradeEnvyCalculator:
                     int(x) if pd.notna(x) else -1 for x in df_envy["trade_index"]
                 ],
                 "pool": df_envy["pool"],
+                "pool_name": df_envy["pool_name"],
+                "solver": df_envy["solver"],
                 "trade_envy": df_envy["trade_envy"],
                 "is_used": df_envy["is_used"],
             }

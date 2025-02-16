@@ -27,3 +27,5 @@ run-incremental-ingest-prod:
 	@echo "Running the docker image"
 	docker run --env-file .env.prod --network host cow_amm_trade_envy --used_pool_names "['USDC-WETH']" --time_start '2025-01-18 00:00:00'
 
+sync-to-dune:
+	docker run --rm --network=host   -v "$(pwd)/config.yaml:/app/config.yaml"  --env-file .env   ghcr.io/bh2smith/dune-sync:latest   --jobs envy_to_dune

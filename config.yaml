@@ -1,0 +1,17 @@
+data_sources:
+  - name: Dune
+    type: dune
+    key: ${DUNE_API_KEY}
+  - name: PG
+    type: postgres
+    key: ${DB_URL}
+
+
+jobs:
+  - name: envy_to_dune
+    source:
+      ref: PG
+      query_string: "SELECT * FROM trade_envy.ethereum_envy; "
+    destination:
+      ref: Dune
+      table_name: envy

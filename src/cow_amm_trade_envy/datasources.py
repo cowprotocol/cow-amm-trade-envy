@@ -1,5 +1,3 @@
-import os
-
 from cow_amm_trade_envy.configs import (
     DataFetcherConfig,
     BCOW_FULL_COW_HELPER_ABI,
@@ -7,7 +5,6 @@ from cow_amm_trade_envy.configs import (
     PGConfig,
 )
 from typing import Optional, List, Tuple, Any
-from dotenv import load_dotenv
 from web3 import Web3
 from web3.types import HexBytes
 from web3.datastructures import AttributeDict
@@ -330,9 +327,10 @@ class DataFetcher:
             return
 
         if beginning_block > current_block + 1:
-            raise ValueError(
-                f"No new blocks to ingest because the next block to be ingested ({beginning_block}) is greater than the current max block to ingest ({current_block})"
+            warning(
+                f"No new blocks to ingest because the lowest next block that is ingestable ({beginning_block}) is greater than the current max block to ingest ({current_block})"
             )
+            return
 
         self.populate_settlement_table_by_blockrange(beginning_block, current_block)
 
@@ -387,9 +385,10 @@ class DataFetcher:
             return
 
         if beginning_block > current_block + 1:
-            raise ValueError(
+            warning(
                 f"No new blocks to ingest because the next block to be ingested ({beginning_block}) is greater than the current max block to ingest ({current_block})"
             )
+            return
 
         self.populate_price_table_by_blockrange(token, beginning_block, current_block)
 
@@ -486,7 +485,3 @@ class DataFetcher:
     def populate_settlement_and_price(self):
         self.populate_settlement_table()
         self.populate_price_tables()
-
-
-if __name__ == "__main__":
-    main()
