@@ -1,3 +1,8 @@
+RELEASE := 'v0.1.0'
+
+tag-version:
+	git diff --exit-code && git diff --staged --exit-code && git tag -a $(RELEASE) -m 'Release $(RELEASE)' || (echo "Repo is dirty please commit first" && exit 1)
+
 test:
 	uv run pytest tests/
 
