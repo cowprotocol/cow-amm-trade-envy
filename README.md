@@ -53,3 +53,7 @@ uv run src/cow_amm_trade_envy/main.py --time_start '2025-01-04 00:00:00' --time_
 
 - Since Dune doesn't ingest prices in real time we have backed off the highest block for 6h worth of blocks. If a higher block is specified for ingestion it will be set to the highest block minus 6h.
 - Keep an eye on: Point queries of helper calls to postgres could be much slower in production when the DB isnt on the same machine
+- If you run the pipeline on top of existing data in the database, an incremental update will be made
+  - When a settlement has been run, its tx_hash will be saved with a dummy value for trade_index envy etc, the same settlement will be skipped in future runs
+  - This means that you have to delete the envy table if you want to ingest Pools that you havent ingested before
+  - 

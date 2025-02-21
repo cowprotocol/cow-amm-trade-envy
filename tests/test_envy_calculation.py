@@ -21,7 +21,6 @@ pg_config = PGConfig(postgres_url=os.getenv("DB_URL"))
 config = EnvyCalculatorConfig(network="ethereum")
 dfc = DataFetcherConfig(
     "ethereum",
-    node_url=os.getenv("NODE_URL"),
     pg_config=pg_config,
     min_block=21_500_000,
     max_block=21_500_000 + 1000,

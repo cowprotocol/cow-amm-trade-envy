@@ -1,5 +1,5 @@
 from web3 import Web3
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, ClassVar
 from dataclasses import dataclass
 
 w3 = Web3()
@@ -14,6 +14,12 @@ class Token:
 
 @dataclass(frozen=True)
 class Tokens:
+    tokens: ClassVar[List[Token]]
+    native: ClassVar[Token]
+
+
+@dataclass(frozen=True)
+class EthereumTokens(Tokens):
     USDC = Token(
         name="USDC",
         address="0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48".lower(),
@@ -54,6 +60,66 @@ class Tokens:
     native = WETH
 
 
+class GnosisTokens(Tokens):
+    WETH = Token(
+        name="WETH",
+        address="0x6a023ccd1ff6f2045c3309768ead9e68f978f6e1".lower(),
+        decimals=18,
+    )
+    GNO = Token(
+        name="GNO",
+        address="0x9c58bacc331c9aa871afd802db6379a98e80cedb".lower(),
+        decimals=18,
+    )
+    sDAI = Token(
+        name="sDAI",
+        address="0xaf204776c7245bF4147c2612BF6e5972Ee483701".lower(),
+        decimals=18,
+    )
+
+    wstETH = Token(
+        name="wstETH",
+        address="0x6C76971f98945AE98dD7d4DFcA8711ebea946eA6".lower(),
+        decimals=18,
+    )
+
+    SAFE = Token(
+        name="SAFE",
+        address="0x4d18815D14fe5c3304e87B3FA18318baa5c23820".lower(),
+        decimals=18,
+    )
+
+    OLAS = Token(
+        name="OLAS",
+        address="0xcE11e14225575945b8E6Dc0D4F2dD4C570f79d9f".lower(),
+        decimals=18,
+    )
+
+    COW = Token(
+        name="COW",
+        address="0x177127622c4A00F3d409B75571e12cB3c8973d3c".lower(),
+        decimals=18,
+    )
+
+    WxDai = Token(
+        name="WxDai",
+        address="0xe91d153e0b41518a2ce8dd3d7944fa863463a97d".lower(),
+        decimals=18,
+    )
+
+    tokens = [WETH, GNO, sDAI, wstETH, SAFE, OLAS, COW]
+    native = WxDai
+
+
+def tokens_factory(network: str) -> Tokens:
+    if network == "ethereum":
+        return EthereumTokens()
+    elif network == "gnosis":
+        return GnosisTokens()
+    else:
+        raise ValueError("Network not supported")
+
+
 @dataclass(frozen=True)
 class BCowPool:
     NAME: str
@@ -74,45 +140,9 @@ class BCowPool:
         return self.checksum_address
 
 
-@dataclass(frozen=True)
 class Pools:
-    pools = [
-        BCowPool(
-            "USDC-WETH",
-            "0xf08d4dea369c456d26a3168ff0024b904f2d8b91",
-            Tokens.USDC,
-            Tokens.WETH,
-            20476566,
-        ),
-        BCowPool(
-            "BAL-WETH",
-            "0xf8f5b88328dff3d19e5f4f11a9700293ac8f638f",
-            Tokens.BAL,
-            Tokens.WETH,
-            20479347,
-        ),
-        BCowPool(
-            "WETH-UNI",
-            "0xa81b22966f1841e383e69393175e2cc65f0a8854",
-            Tokens.WETH,
-            Tokens.UNI,
-            21105545,
-        ),
-        BCowPool(
-            "COW-wstETH",
-            "0x9bd702e05b9c97e4a4a3e47df1e0fe7a0c26d2f1",
-            Tokens.COW,
-            Tokens.wstETH,
-            20522025,
-        ),
-        BCowPool(
-            "wstETH-DOG",
-            "0x9d0e8cdf137976e03ef92ede4c30648d05e25285",
-            Tokens.wstETH,
-            Tokens.DOG,
-            20587725,
-        ),
-    ]
+    def __init__(self, pools: List[BCowPool]):
+        self.pools = pools
 
     def get_pools(self) -> List[BCowPool]:
         return self.pools
@@ -165,7 +195,94 @@ class Pools:
         raise ValueError(f"Pool with address {address} not found")
 
 
-addr_to_token = Pools().get_token_lookup()
+EthereumPools = Pools(
+    [
+        BCowPool(
+            "USDC-WETH",
+            "0xf08d4dea369c456d26a3168ff0024b904f2d8b91",
+            EthereumTokens.USDC,
+            EthereumTokens.WETH,
+            20476566,
+        ),
+        BCowPool(
+            "BAL-WETH",
+            "0xf8f5b88328dff3d19e5f4f11a9700293ac8f638f",
+            EthereumTokens.BAL,
+            EthereumTokens.WETH,
+            20479347,
+        ),
+        BCowPool(
+            "WETH-UNI",
+            "0xa81b22966f1841e383e69393175e2cc65f0a8854",
+            EthereumTokens.WETH,
+            EthereumTokens.UNI,
+            21105545,
+        ),
+        BCowPool(
+            "COW-wstETH",
+            "0x9bd702e05b9c97e4a4a3e47df1e0fe7a0c26d2f1",
+            EthereumTokens.COW,
+            EthereumTokens.wstETH,
+            20522025,
+        ),
+        BCowPool(
+            "wstETH-DOG",
+            "0x9d0e8cdf137976e03ef92ede4c30648d05e25285",
+            EthereumTokens.wstETH,
+            EthereumTokens.DOG,
+            20587725,
+        ),
+    ]
+)
+
+GnosisPools = Pools(
+    [
+        BCowPool(
+            "WETH-GNO",
+            "0x079d2094e16210c42457438195042898a3cff72d",
+            GnosisTokens.WETH,
+            GnosisTokens.GNO,
+            35382680,
+        ),
+        BCowPool(
+            "wstETH- sDAI",
+            "0x5089007dec8e93f891dcb908c9e2af8d9dedb72e",
+            GnosisTokens.wstETH,
+            GnosisTokens.sDAI,
+            35388314,
+        ),
+        BCowPool(
+            "GNO-SAFE",
+            "0xad58d2bc841cb8e4f8717cb21e3fb6c95dcbc286",
+            GnosisTokens.GNO,
+            GnosisTokens.SAFE,
+            35388198,
+        ),
+        BCowPool(
+            "GNO-OLAS",
+            "0xd7f99b1cda3eecf6b6eaa8a61ed21d061e745400",
+            GnosisTokens.GNO,
+            GnosisTokens.OLAS,
+            35388100,
+        ),
+        BCowPool(
+            "GNO-COW",
+            "0x71663f74490673706d7b8860b7d02b7c76160bae",
+            GnosisTokens.GNO,
+            GnosisTokens.COW,
+            35388008,
+        ),
+    ]
+)
+
+
+def pools_factory(network: str) -> Pools:
+    if network == "ethereum":
+        return EthereumPools
+    elif network == "gnosis":
+        return GnosisPools
+    else:
+        raise ValueError("Network not supported")
 
 
 @dataclass(frozen=True)
@@ -183,7 +300,9 @@ class CoWAmmOrderData:
     signature: bytes
 
     @staticmethod
-    def from_order_response(order):
+    def from_order_response(order, network: str):
+        addr_to_token = pools_factory(network).get_token_lookup()
+
         return CoWAmmOrderData(
             sellToken=addr_to_token[order[0].lower()],
             buyToken=addr_to_token[order[1].lower()],
@@ -207,7 +326,9 @@ class UCP:
         return self.prices[token.address]
 
     @classmethod
-    def from_lists(cls, tokens: List[Token], prices: List[int], n_trades: int) -> "UCP":
+    def from_lists(
+        cls, tokens: List[Token], prices: List[int], n_trades: int, native_address: str
+    ) -> "UCP":
         if len(tokens) != len(prices):
             raise ValueError("Cannot zip different lengths")
         prices = [int(price) for price in prices]
@@ -233,8 +354,8 @@ class UCP:
         # Therefore, we only substitute the wrapped price if it doesnt occur in the UCPs
         # (and only in the trade data)
         coin = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
-        if coin in tokens_prices and Tokens.native.address not in tokens_prices:
-            tokens_prices[Tokens.native.address] = tokens_prices[coin]
+        if coin in tokens_prices and native_address not in tokens_prices:
+            tokens_prices[native_address] = tokens_prices[coin]
 
         return cls(prices=tokens_prices)
 
@@ -256,8 +377,12 @@ class Trade:
 
 
 def trades_from_lists(
-    tokens: list, prices: list, trades: list, block_num: int
+    tokens: list, prices: list, trades: list, block_num: int, network: str
 ) -> List["Trade"]:
+    addr_to_token = pools_factory(network).get_token_lookup()
+
+    NetworkPools = pools_factory(network)
+
     trades_processed = []
     for trade in trades:
         buy_token = tokens[int(trade["buyTokenIndex"])].lower()
@@ -267,12 +392,12 @@ def trades_from_lists(
         buy_price = int(prices[int(trade["buyTokenIndex"])])
         sell_price = int(prices[int(trade["sellTokenIndex"])])
 
-        is_supported = Pools().pair_is_supported(buy_token, sell_token)
+        is_supported = NetworkPools.pair_is_supported(buy_token, sell_token)
         if not is_supported:
             trades_processed.append(None)
             continue
 
-        pool = Pools()[(buy_token, sell_token)]
+        pool = NetworkPools[(buy_token, sell_token)]
         if block_num < pool.first_block_active:  # trade before pool creation
             trades_processed.append(None)
             continue

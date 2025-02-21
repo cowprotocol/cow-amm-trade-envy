@@ -8,10 +8,18 @@ data_sources:
 
 
 jobs:
-  - name: envy_to_dune
+  - name: envy_to_dune_ethereum
     source:
       ref: PG
       query_string: "SELECT * FROM trade_envy.ethereum_envy; "
     destination:
       ref: Dune
-      table_name: envy
+      table_name: envy_ethereum
+
+  - name: envy_to_dune_gnosis
+    source:
+      ref: PG
+      query_string: "SELECT * FROM trade_envy.gnosis_envy; "
+    destination:
+      ref: Dune
+      table_name: envy_gnosis

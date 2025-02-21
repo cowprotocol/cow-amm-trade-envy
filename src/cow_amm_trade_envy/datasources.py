@@ -3,6 +3,7 @@ from cow_amm_trade_envy.configs import (
     BCOW_FULL_COW_HELPER_ABI,
     BCOW_PARTIAL_COW_HELPER_ABI,
     PGConfig,
+    network_config_factory,
 )
 from typing import Optional, List, Tuple, Any
 from web3 import Web3
@@ -18,16 +19,25 @@ from tqdm import tqdm
 from tenacity import retry, stop_after_attempt, wait_fixed
 from logging import warning
 
-from cow_amm_trade_envy.models import CoWAmmOrderData, BCowPool, Tokens, Token
+from cow_amm_trade_envy.models import (
+    CoWAmmOrderData,
+    BCowPool,
+    Tokens,
+    Token,
+    tokens_factory,
+)
 from cow_amm_trade_envy.db_utils import upsert_data
 
 
 class Web3Helper:
     def __init__(self, node_url: str):
         self.w3 = Web3(Web3.HTTPProvider(node_url, request_kwargs={"timeout": 60}))
+        self.block_number = (
+            self.w3.eth.get_block_number()
+        )  # to keep it constant for the lifetime of the object
 
     def get_block_number(self) -> int:
-        return self.w3.eth.get_block_number()
+        return self.block_number
 
     def to_checksum_address(self, address: str) -> str:
         return self.w3.to_checksum_address(address)
@@ -102,21 +112,19 @@ class DatabaseManager:
 class BCoWHelper:
     def __init__(self, config: DataFetcherConfig):
         self.config = config
-        self.w3_helper = Web3Helper(config.node_url)
         self.db_manager = DatabaseManager(config.min_block, config.pg_config)
+        self.network_config = network_config_factory(config.network)
 
-        # Full cow contract setup
-        self.address_full_cow = "0x3FF0041A614A9E6Bf392cbB961C97DA214E9CB31"
+        self.w3_helper = Web3Helper(self.network_config.node_url)
+
         self.contract_full_cow = self.w3_helper.w3.eth.contract(
-            address=self.address_full_cow, abi=BCOW_FULL_COW_HELPER_ABI
+            address=self.network_config.contractaddr_full_cow,
+            abi=BCOW_FULL_COW_HELPER_ABI,
         )
 
-        # Partial cow contract setup
-        self.address_partial_cow = self.w3_helper.to_checksum_address(
-            "0x03362f847b4fabc12e1ce98b6b59f94401e4588e"
-        )
         self.contract_partial_cow = self.w3_helper.w3.eth.contract(
-            address=self.address_partial_cow, abi=BCOW_PARTIAL_COW_HELPER_ABI
+            address=self.network_config.contractaddr_partial_cow,
+            abi=BCOW_PARTIAL_COW_HELPER_ABI,
         )
         self.contract_partial_cow_deployment = 20963124
 
@@ -160,7 +168,7 @@ class BCoWHelper:
             contract_function, pool, {"prices": prices}, block_num
         )
         order, _, _, _ = response
-        return CoWAmmOrderData.from_order_response(order)
+        return CoWAmmOrderData.from_order_response(order, self.config.network)
 
     def order_from_buy_amount(
         self, pool: BCowPool, buy_token: str, buy_amount: int, block_num: int
@@ -177,7 +185,7 @@ class BCoWHelper:
             contract_function, pool, params, block_num
         )
         order, _, _, _ = response
-        return CoWAmmOrderData.from_order_response(order)
+        return CoWAmmOrderData.from_order_response(order, self.config.network)
 
     def get_logs_batch(self, tx_hashes: List[str]):
         """Fetch logs for a batch of transaction hashes from cache or blockchain."""
@@ -235,7 +243,9 @@ class DataFetcher:
     def __init__(self, config: DataFetcherConfig):
         self.config = config
         self.db_manager = DatabaseManager(config.min_block, config.pg_config)
-        self.w3_helper = Web3Helper(config.node_url)
+
+        self.network_config = network_config_factory(config.network)
+        self.w3_helper = Web3Helper(self.network_config.node_url)
 
     def create_settlement_table(self):
         table_name = f"{self.config.network}_settle"
@@ -291,7 +301,7 @@ class DataFetcher:
                 upsert_data(table_name, df, conn)
 
     def get_highest_block(self) -> int:
-        if self.config.network == "ethereum":
+        if self.config.network in ["ethereum", "gnosis"]:
             highest_block = (
                 self.w3_helper.get_block_number()
                 - self.config.backoff_blocks[self.config.network]
@@ -300,6 +310,7 @@ class DataFetcher:
                 return highest_block
             else:
                 return min(highest_block, self.config.max_block)
+
         raise ValueError(f"Network {self.config.network} not supported")
 
     @staticmethod
@@ -340,6 +351,11 @@ class DataFetcher:
             pool.TOKEN1 for pool in used_pools
         ]
         tokens_to_query = list(set(pool_tokens))
+        # if the native token is not in the pool tokens, add it
+        tokens = tokens_factory(self.config.network)
+        native_token = tokens.native
+        if native_token not in tokens_to_query:
+            tokens_to_query.append(native_token)
 
         for token in tokens_to_query:
             self.populate_price_table(token)
@@ -444,7 +460,7 @@ class DataFetcher:
     ) -> float | None:
         network = self.config.network
         table_name = f"{network}_{token_address}_price"
-        native = Tokens.native.address
+        native = tokens_factory(network).native.address
         with self.db_manager.connect() as conn, conn.cursor() as cursor:
             cursor.execute(
                 f"""

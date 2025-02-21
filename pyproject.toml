@@ -7,16 +7,14 @@ requires-python = ">=3.12"
 dependencies = [
     "dune-spice>=0.2.5",
     "fire>=0.7.0",
-    "notebook>=7.3.1",
     "pandas>=2.2.3",
-    "plotly>=5.24.1",
     "polars-lts-cpu>=1.19.0",
     "psycopg2-binary>=2.9.10",
-    "pyarrow>=18.1.0",
+    "pyarrow>=19.0.1",
     "pytest>=8.3.4",
     "python-dotenv>=1.0.1",
-    "quarto-cli>=1.6.39",
     "ruff>=0.8.2",
+    "tenacity>=9.0.0",
     "tqdm>=4.67.1",
     "web3==7.2",
 ]

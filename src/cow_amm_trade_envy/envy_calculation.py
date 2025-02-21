@@ -6,8 +6,9 @@ from typing import Optional, List, Dict, Any
 from cow_amm_trade_envy.configs import EnvyCalculatorConfig, DataFetcherConfig
 from cow_amm_trade_envy.models import (
     UCP,
+    pools_factory,
     Pools,
-    Tokens,
+    tokens_factory,
     Token,
     trades_from_lists,
     Trade,
@@ -23,14 +24,16 @@ class TradeEnvyCalculator:
         self,
         config: EnvyCalculatorConfig,
         dfc: DataFetcherConfig,
-        used_pools: List[BCowPool] = None,
+        used_pool_list: List[BCowPool] = None,
     ):
         self.config = config
         self.helper = BCoWHelper(dfc)
         self.data_fetcher = DataFetcher(dfc)
-        if used_pools is None:
-            used_pools = Pools().get_pools()
-        self.used_pools = used_pools
+        self.network_pools: Pools = pools_factory(self.config.network)
+        if used_pool_list is None:
+            used_pool_list = self.network_pools.get_pools()
+        self.used_pool_list: List[BCowPool] = used_pool_list
+        self.tokens = tokens_factory(self.config.network)
 
     @staticmethod
     def preprocess_row(row: pd.Series) -> pd.Series:
@@ -70,7 +73,7 @@ class TradeEnvyCalculator:
     def calc_surplus_per_trade(
         self, ucp: UCP, trade: Trade, block_num: int
     ) -> Optional[dict]:
-        pool = Pools().get_fitting_pool(trade)
+        pool = self.network_pools.get_fitting_pool(trade)
         order = self.helper.order(
             pool=pool,
             prices=[ucp[pool.TOKEN0], ucp[pool.TOKEN1]],
@@ -118,12 +121,12 @@ class TradeEnvyCalculator:
             surplus = surplus * ucp[pool.TOKEN0] / ucp[pool.TOKEN1]
 
         # make sure its denominated in native token using pre-downloaded prices
-        if pool.TOKEN1 != Tokens.native:
+        if pool.TOKEN1 != self.tokens.native:
             rate_in_wrapped_native = self.data_fetcher.get_token_to_native_rate(
                 pool.TOKEN1.address, block_num
             )
             decimal_correction_factor = 10 ** (
-                Tokens.native.decimals - pool.TOKEN1.decimals
+                self.tokens.native.decimals - pool.TOKEN1.decimals
             )
             surplus = surplus * rate_in_wrapped_native * decimal_correction_factor
 
@@ -142,10 +145,16 @@ class TradeEnvyCalculator:
             row["clearing_prices"],
             row["trades"],
             row["call_block_number"],
+            self.config.network,
         )  # todo remove filtering from eligible trades list function and rename
 
         n_trades = len(settlement_trades)
-        ucp = UCP.from_lists(row["tokens"], row["clearing_prices"], n_trades=n_trades)
+        ucp = UCP.from_lists(
+            row["tokens"],
+            row["clearing_prices"],
+            n_trades=n_trades,
+            native_address=self.tokens.native.address,
+        )
 
         # Add an index to each trade
         settlement_trades_indexed = list(enumerate(settlement_trades))
@@ -161,7 +170,7 @@ class TradeEnvyCalculator:
         eligible_settlement_trades = [
             (i, trade)
             for i, trade in eligible_settlement_trades_indexed
-            if Pools().get_fitting_pool(trade) in self.used_pools
+            if self.network_pools.get_fitting_pool(trade) in self.used_pool_list
         ]
 
         envy_list = []
@@ -173,7 +182,7 @@ class TradeEnvyCalculator:
                 surplus = surplus_data["surplus"]
                 pool = surplus_data["pool"]
                 gas = self.calc_gas(row["gas_price"])
-                trade_envy = (surplus - gas) * 10 ** (-Tokens.native.decimals)
+                trade_envy = (surplus - gas) * 10 ** (-self.tokens.native.decimals)
                 envy_list.append(
                     {"trade_envy": trade_envy, "pool": pool, "trade_index": i}
                 )
@@ -276,7 +285,9 @@ class TradeEnvyCalculator:
 
         # Compute the pool_name based on the pool address, if available.
         df_envy["pool_name"] = df_envy["pool"].apply(
-            lambda x: Pools().get_name_from_address(x) if pd.notna(x) else None
+            lambda x: self.network_pools.get_name_from_address(x)
+            if pd.notna(x)
+            else None
         )
 
         envy_data = pd.DataFrame(
@@ -297,8 +308,8 @@ class TradeEnvyCalculator:
             upsert_data(table_name, envy_data, conn)
 
         # todo remove in the end
-        if self.config.network == "ethereum" and len(self.used_pools) == len(
-            Pools().get_pools()
+        if self.config.network == "ethereum" and len(self.used_pool_list) == len(
+            pools_factory(self.config.network).get_pools()
         ):
             outfile = "data/cow_amm_missed_surplus.csv"
             envy_data.to_csv(outfile)  # keep this for now to see changes in the diffs

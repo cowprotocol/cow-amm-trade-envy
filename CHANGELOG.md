@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.1] - 2025-02-21
+
+### Added
+- Support for Gnosis network
+
+### Changed
+- Make endpoints changed
+- Fix checking of env vars
+- remove heavyweight dependencies
+
+
 ## [0.1.0] - 2025-02-16
 
 ### Added
