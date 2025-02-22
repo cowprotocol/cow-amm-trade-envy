@@ -210,8 +210,8 @@ class TradeEnvyCalculator:
         tx_hash_to_logs = dict(zip(call_tx_hashes, logs_list))
         df["logs"] = df["call_tx_hash"].apply(lambda x: tx_hash_to_logs.get(x))
 
-        df["is_used"] = None
-        df.loc[mask_poolnotna, "is_used"] = [
+        df["pool_used_already"] = None
+        df.loc[mask_poolnotna, "pool_used_already"] = [
             logs_are_used(logs, pool_address)
             for logs, pool_address in list(
                 zip(df["logs"][mask_poolnotna], df["pool"][mask_poolnotna])
@@ -232,7 +232,7 @@ class TradeEnvyCalculator:
             pool_name TEXT,
             solver TEXT,
             trade_envy NUMERIC,
-            is_used BOOLEAN,
+            pool_used_already BOOLEAN,
             PRIMARY KEY (call_tx_hash, trade_index)
         );
         """
@@ -308,7 +308,7 @@ class TradeEnvyCalculator:
                 "pool_name": df_envy["pool_name"],
                 "solver": df_envy["solver"],
                 "trade_envy": df_envy["trade_envy"],
-                "is_used": df_envy["is_used"],
+                "pool_used_already": df_envy["pool_used_already"],
             }
         )
 
