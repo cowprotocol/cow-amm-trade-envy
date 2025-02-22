@@ -282,9 +282,11 @@ class TradeEnvyCalculator:
 
         # Merge the solver column from the settlement (ucp_data) into the envy DataFrame.
         df_envy = df_envy.merge(
-            ucp_data[["call_tx_hash", "solver", "call_block_number",
-                      "call_block_time"
-                      ]], on="call_tx_hash", how="left"
+            ucp_data[
+                ["call_tx_hash", "solver", "call_block_number", "call_block_time"]
+            ],
+            on="call_tx_hash",
+            how="left",
         )
 
         # Compute the pool_name based on the pool address, if available.
