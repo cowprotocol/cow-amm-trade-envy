@@ -1,7 +1,7 @@
 # Trade Envy Calculation
 
 We define the envy of a trade as the surplus missed out on by not choosing a CoW AMM minus
-an estimated transaction cost of 100k gas at the current gas price of the trade.
+an estimated transaction cost of 100k gas at the current gas price of the trade. Envy is denominated in the native token of the chain the trade is made on.
 
 ### Method
 
@@ -40,6 +40,11 @@ uv run src/cow_amm_trade_envy/main.py --used_pool_names "['USDC-WETH']" --time_s
 To use all pools omit the `--used_pool_names` argument
 ```bash
 uv run src/cow_amm_trade_envy/main.py --time_start '2025-01-04 00:00:00' --time_end '2025-01-11 23:59:59'
+```
+
+To use docker to update the database for Ethereum and Gnosis and upload the data to Dune:
+```bash
+make update-and-sync
 ```
 
 ### TODOs
