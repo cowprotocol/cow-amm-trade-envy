@@ -64,8 +64,9 @@ class DataFetcherConfig:
     network: str
     min_block: int
     pg_config: PGConfig
-    dune_query_settle: int = 4448838
-    dune_query_price: int = 4468197
+    dune_query_settle: int = 4761062
+    dune_query_price: int = 4761101
+    dune_query_blockoftime: int = 4761079
     interval_length_settle: int = 10_000
     interval_length_price: int = 100_000
     backoff_blocks: Dict[str, int] = None

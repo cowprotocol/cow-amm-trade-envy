@@ -362,7 +362,7 @@ class DataFetcher:
 
     def get_block_number_by_time(self, time: str) -> int:
         # convert to UTC
-        blocktime_query = 4558583
+        blocktime_query = self.config.dune_query_blockoftime
         params = {
             "network": self.config.network,
             "blocktime": time,
