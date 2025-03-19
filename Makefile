@@ -1,4 +1,4 @@
-RELEASE := 'v0.2.0'
+RELEASE := 'v0.2.1'
 
 
 update-and-sync:

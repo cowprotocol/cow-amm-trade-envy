@@ -1,10 +1,13 @@
 # Changelog
 
 
-## [0.2.0] - 2025-02-22
+## [0.2.1] - 2025-03-19
 
 ### Changed
-- Change envy table: Rename is_used to pool_used_already
+- Less caching for helper queries
+
+### Fixed
+- Fix bug in envy calculation when UCPs are too large and make the contract throw an exception
 
 
 ## [0.1.2] - 2025-02-22
