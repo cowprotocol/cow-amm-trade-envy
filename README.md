@@ -27,7 +27,7 @@ Note that if the minimum time parameter is before the highest currently ingested
 
 ### Usage
 
-The program uses the `seed_min_block_number` to start populating the database. This is the first block data is being ingested for, all the following ingests have to add continuously on top.
+The program uses the `seed_min_block_number` (derived from start date) to start populating the database. This is the first block data is being ingested for, all the following ingests add continuously on top.
 Also using for example a `time_start` parameter only sets the most fitting block number as a `seed_min_block_number`. Changing it requires deletion of the database and the parameter is only relevant for the very first ingest because additional ingests query the top block ingested.
 
 The Makefile serves as a showcase of how to use the commands

@@ -35,7 +35,9 @@ def main_by_time(
         date_end = datetime.datetime.now(datetime.timezone.utc)
         time_end = date_end.strftime("%Y-%m-%d %H:%M:%S")
 
-    print(f"Getting blocks for times {time_start} and {time_end}...")
+    print(
+        f"Getting blocks for times {time_start} and {time_end} (minus potential backoff)..."
+    )
     min_block = data_fetcher.get_block_number_by_time(time_start)
     max_block = data_fetcher.get_block_number_by_time(time_end)
     print(f"Got blocks {min_block} and {max_block}")
@@ -90,4 +92,4 @@ def main(
 if __name__ == "__main__":
     Fire(main_by_time)
     # load_dotenv()
-    # main(21762909, 21762910, used_pool_names=["USDC-WETH"])  # todo remove
+    # main("ethereum", 22030102, 22056907)# , used_pool_names=["USDC-WETH"])  # todo remove

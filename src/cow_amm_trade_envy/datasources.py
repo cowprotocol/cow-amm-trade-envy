@@ -13,6 +13,7 @@ import json
 import pandas as pd
 import polars as pl
 import psycopg2
+import logging
 
 import spice
 from tqdm import tqdm
@@ -103,10 +104,20 @@ class DatabaseManager:
 
     def get_first_block_to_ingest(self, table_name: str, block_col_name: str) -> int:
         query = f"SELECT MAX({block_col_name}) FROM trade_envy.{table_name}"
+
         with self.connect() as conn, conn.cursor() as cursor:
             cursor.execute(query)
             result = cursor.fetchone()
-        return self.seed_min_block_number if result[0] is None else int(result[0]) + 1
+
+        if result[0] is not None:
+            if self.seed_min_block_number is not None:
+                logging.debug(
+                    "Start block ignored, using max block from db to avoid gaps in data."
+                )
+
+            return int(result[0]) + 1
+        else:
+            return self.seed_min_block_number
 
 
 class BCoWHelper:
@@ -150,16 +161,24 @@ class BCoWHelper:
         return self.json_serializer(response)
 
     def fetch_from_cache_or_query(
-        self, contract_function: Any, pool: BCowPool, params: dict, block_num: int
+        self,
+        contract_function: Any,
+        pool: BCowPool,
+        params: dict,
+        block_num: int,
+        cache=True,
     ) -> Any:
-        cache_key = f"{self.config.network}_{contract_function.address}_{contract_function.abi_element_identifier}_{pool}_{json.dumps(params)}_{block_num}"
-
-        cached_response = self.db_manager.get_cached_order(cache_key)
-        if cached_response:
-            return json.loads(cached_response)
+        if cache:
+            cache_key = f"{self.config.network}_{contract_function.address}_{contract_function.abi_element_identifier}_{pool}_{json.dumps(params)}_{block_num}"
+            cached_response = self.db_manager.get_cached_order(cache_key)
+            if cached_response:
+                return json.loads(cached_response)
 
         response = self.query_contract(contract_function, pool, params, block_num)
-        self.db_manager.cache_order(cache_key, json.dumps(response))
+
+        if cache:
+            self.db_manager.cache_order(cache_key, json.dumps(response))
+
         return response
 
     def order(self, pool: BCowPool, prices: list, block_num: int) -> CoWAmmOrderData:

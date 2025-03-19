@@ -17,6 +17,7 @@ from cow_amm_trade_envy.models import (
 )
 from cow_amm_trade_envy.datasources import BCoWHelper, DataFetcher
 from cow_amm_trade_envy.db_utils import upsert_data
+import math
 
 
 class TradeEnvyCalculator:
@@ -70,13 +71,46 @@ class TradeEnvyCalculator:
 
         return partial_order.sellAmount
 
+    def scale_prices(self, ucp_token0, ucp_token1, max_scale=45, min_scale=4) -> tuple:
+        # prices are just relative to each other. it may happen that UCPs are too large
+        # in that case we want to scale them back. An example that made a problem
+        # had UCP sizes of 10**52 and 10**56. To be safe just stay below 10**45 should
+        # still be accurate enough. problem block on eth: 22047212
+
+        if ucp_token0 > 10**max_scale or ucp_token1 > 10**max_scale:
+            exponent = max_scale - int(math.log(max(ucp_token0, ucp_token1), 10)) - 1
+            scaling_factor = 10**exponent
+
+            ucp_scaled_token0 = int(ucp_token0 * scaling_factor)
+            ucp_scaled_token1 = int(ucp_token1 * scaling_factor)
+
+            # if either of them is too small, we might have a problem
+            if (
+                math.log(ucp_scaled_token0, 10) < min_scale
+                or math.log(ucp_scaled_token1, 10) < min_scale
+            ):
+                raise ValueError(
+                    "scaled UCP is pretty small. I hoped this wouldnt"
+                    "happen but you might be able to lower the min_scale,"
+                    "just make sure it is still accurate enough."
+                )
+
+            ucp_token0 = ucp_scaled_token0
+            ucp_token1 = ucp_scaled_token1
+
+        return ucp_token0, ucp_token1
+
     def calc_surplus_per_trade(
         self, ucp: UCP, trade: Trade, block_num: int
     ) -> Optional[dict]:
         pool = self.network_pools.get_fitting_pool(trade)
+        ucp_token0 = ucp[pool.TOKEN0]
+        ucp_token1 = ucp[pool.TOKEN1]
+
+        ucp_scaled_token0, ucp_scaled_token1 = self.scale_prices(ucp_token0, ucp_token1)
         order = self.helper.order(
             pool=pool,
-            prices=[ucp[pool.TOKEN0], ucp[pool.TOKEN1]],
+            prices=[ucp_scaled_token0, ucp_scaled_token1],
             block_num=block_num,
         )
 
